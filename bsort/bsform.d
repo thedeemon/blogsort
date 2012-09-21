@@ -4,7 +4,7 @@
 	www.dprogramming.com/entice.php
 */
 
-import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor;
+import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor, std.algorithm, std.array;
 
 class FileItem
 {
@@ -140,12 +140,19 @@ class MainForm : dfl.form.Form
 			foreach(ext; ["jpg", "bmp", "gif"]) picext[ext] = true;
 			curPic = new Picture(ofd.fileName);
 			picBox.image = curPic;
+
+			auto files = array(dirEntries(ofd.fileName[0..i], SpanMode.shallow)
+								.filter!(name => name.isFile && name[$-3..$].toLower() in picext));
+			auto sorted = files.sort();
+			auto triple = sorted.trisect(ofd.fileName);
+			string prevFile = triple[0].empty ? null : triple[0][$-1];
+			string nextFile = triple[2].empty ? null : triple[2][0];
+
 			lbxFiles.beginUpdate();
 			lbxFiles.items.clear();
-			foreach(string name; dirEntries(ofd.fileName[0..i], SpanMode.shallow)) {
-				if (name.isFile && name[$-3..$].toLower() in picext)
+			foreach(name; files) 				
 					lbxFiles.items.add(new FileItem(name));
-			}
+			
 			lbxFiles.endUpdate();
 		}
 	}

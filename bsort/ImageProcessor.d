@@ -1,5 +1,6 @@
 module imageprocessor;
-import dfl.all, std.c.windows.windows, dfl.internal.winapi, std.concurrency, std.range, core.time;
+import dfl.all, std.c.windows.windows, dfl.internal.winapi, std.concurrency, std.range, core.time, std.algorithm;
+import std.typecons;
 
 class Pic
 {
@@ -7,9 +8,9 @@ class Pic
 	Bitmap bmp;
 	int last_req;
 
-	this(string filename, Bitmap bitmap)
+	this(string filename, Bitmap bitmap, int req = 0)
 	{
-		fname = filename; bmp = bitmap; last_req = 0;
+		fname = filename; bmp = bitmap; last_req = req;
 	}
 }
 
@@ -20,6 +21,7 @@ struct ThumbCreated
 {
 	string fname;
 	shared Bitmap bmp;	
+	int req;
 }
 
 enum Priority {
@@ -29,24 +31,28 @@ enum Priority {
 class Job 
 { 
 	Priority prio; 
+	this(Priority p) { prio = p; }
 }
 
 class JGetThumb : Job 
 {
 	string fname;
-	this(string filename) {	fname = filename; prio = Priority.Visible;	}
+	int req;
+	this(string filename, int req_no) { super(Priority.Visible); fname = filename; req = req_no; }
+}
+
+class JPrepare : Job //read and resize to blogsize
+{
+	string fname;
+	this(string filename) { super(Priority.Soon); fname = filename; }
 }
 
 synchronized class LabourDept
 {
-	static shared LabourDept dept;
-	//shared static this() { dept = new shared(LabourDept); }	
-
 	void PostJob(shared Job job)
 	{
 		jobs[job.prio] ~= job;
 	}
-
 	shared(Job) GetJob()
 	{
 		foreach(p; 0..4) {
@@ -58,6 +64,8 @@ synchronized class LabourDept
 		}
 		return null;
 	}
+
+	static shared LabourDept dept;
 
 private:
 	Job[][4] jobs; //4 priorities
@@ -111,14 +119,20 @@ class Worker
 			auto bmp = ResizeToThumb(pic);
 			pic.dispose();
 			if (bmp)
-				iptid.send(ThumbCreated(jgt.fname, bmp));
-				//thumb_cache[fname] = new Pic(fname, bmp);			
+				iptid.send(ThumbCreated(jgt.fname, bmp, jgt.req));			
+			return;
+		}
+		auto jprep = cast(JPrepare) job;
+		if (jprep) {
+			//prepare: read and resize to blog size
 		}
 	}
 
 private:
 	Tid iptid;
 }
+
+
 
 void startWorker(Tid iptid)
 {
@@ -130,16 +144,13 @@ class ImageProcessor
 {
 	Bitmap GetThumb(string fname)
 	{
-		if (fname in thumb_cache) 
-			return thumb_cache[fname].bmp;
-		PostJob(new shared(JGetThumb)(fname));
-		/*auto pic = new Picture(fname);
-		if (pic is null) return null;
-		Bitmap bmp = ResizeToThumb(pic);
-		if (bmp)
-			thumb_cache[fname] = new Pic(fname, bmp);
-		pic.dispose();
-		return bmp;*/
+		req_no++;
+		if (fname in thumb_cache) {
+			Pic p = thumb_cache[fname]; 
+			p.last_req = req_no;
+			return p.bmp;
+		}
+		PostJob(new shared(JGetThumb)(fname, req_no));
 		return null;
 	}
 
@@ -179,6 +190,35 @@ class ImageProcessor
 			receive(&gotThumb, &linkDied);
 	}
 
+	Image FileSelected(string prevFile, string curFile, string nextFile)
+	{
+		requested[0] = prevFile; requested[1] = curFile; requested[2] = nextFile;
+		Pic[3] pix;
+		bool[3] used = [false, false, false];
+		foreach(i; 0..3) {
+			foreach(j; 0..3)
+				if (processed[j] && processed[j].fname==requested[i]) {
+					pix[i] = processed[j];
+					used[j] = true;
+					break;
+				}
+		}
+		foreach(i; 0..3) {
+			if (!used[i] && processed[i]) delete processed[i].bmp;
+			processed[i] = pix[i];
+		}
+		if (processed[2] is null) PostJob(new shared(JPrepare)(nextFile));
+		if (processed[0] is null) PostJob(new shared(JPrepare)(prevFile));
+		if (processed[1] is null) {
+			//prepare now
+			auto p = new Picture(curFile);
+			auto bmp = p.toBitmap();
+			processed[1] = new Pic(curFile, bmp);
+			return bmp;
+		}
+		return processed[1].bmp;
+	}
+
 private:
 	void onTimer(Timer sender, EventArgs ea)
 	{
@@ -187,7 +227,13 @@ private:
 
 	void gotThumb(ThumbCreated tb)
 	{
-		thumb_cache[tb.fname] = new Pic(tb.fname, cast(Bitmap)tb.bmp);
+		thumb_cache[tb.fname] = new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req);
+		if (thumb_cache.length > max_thumbs) {
+			auto tbs = thumb_cache.byKey().map!(name => tuple(name, thumb_cache[name]));
+			auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
+			delete mp.front[1].bmp;
+			thumb_cache.remove(mp.front[0]);
+		}
 		if (on_gotthumb !is null) on_gotthumb();
 	}
 
@@ -197,8 +243,12 @@ private:
 	}
 
 	Pic[string] thumb_cache;
+	int req_no = 0;
+	immutable max_thumbs = 100;
 	Tid[] workers;
 	Timer timer;
 	void delegate() on_gotthumb;
 	bool[Tid] terminated;
+	Pic[3] processed;
+	string[3] requested;
 }
