@@ -40,8 +40,7 @@ class MainForm : dfl.form.Form
 	//~Entice Designer variables end here.	
 	
 	this()
-	{
-		jpgWriter = new JpegWriter;
+	{		
 		imgProc = new ImageProcessor(&onGotThumb);
 		initializeMyForm();		
 		//@  Other MyForm initialization code here.		
@@ -123,6 +122,8 @@ class MainForm : dfl.form.Form
 		lbxFiles.drawMode = DrawMode.OWNER_DRAW_FIXED;
 		lbxFiles.drawItem ~= &drawItem;
 		lbxFiles.itemHeight = 130;
+		lbxFiles.sorted = false;
+		lbxFiles.selectedValueChanged ~= &OnSelChanged;
 
 		closed ~= &OnClose;
 	}
@@ -138,9 +139,6 @@ class MainForm : dfl.form.Form
 			auto i = ofd.fileName.lastIndexOf('\\');
 			bool[string] picext;
 			foreach(ext; ["jpg", "bmp", "gif"]) picext[ext] = true;
-			curPic = new Picture(ofd.fileName);
-			picBox.image = curPic;
-
 			auto files = array(dirEntries(ofd.fileName[0..i], SpanMode.shallow)
 								.filter!(name => name.isFile && name[$-3..$].toLower() in picext));
 			auto sorted = files.sort();
@@ -151,18 +149,55 @@ class MainForm : dfl.form.Form
 			lbxFiles.beginUpdate();
 			lbxFiles.items.clear();
 			foreach(name; files) 				
-					lbxFiles.items.add(new FileItem(name));
-			
+					lbxFiles.items.add(new FileItem(name));			
 			lbxFiles.endUpdate();
+			foreach(idx; 0..lbxFiles.items.length) {
+				FileItem it = cast(FileItem)lbxFiles.items[idx];
+				if (it.fullname == ofd.fileName) {
+					lbxFiles.selectedIndex = idx;
+					break;
+				}
+			}
+			showImage( imgProc.FileSelected(prevFile, ofd.fileName, nextFile) );
 		}
+	}
+
+	void OnSelChanged(ListControl lc, EventArgs ea)
+	{
+		int i = lbxFiles.selectedIndex;
+		if (i < 0) return;
+		auto it = cast(FileItem) lbxFiles.items[i];
+		auto prev = i > 0 ? cast(FileItem) lbxFiles.items[i-1] : null;
+		auto next = i < lbxFiles.items.length - 1 ? cast(FileItem) lbxFiles.items[i+1] : null;
+		string prevFile = prev ? prev.fullname : null;
+		string nextFile = next ? next.fullname : null;
+		showImage( imgProc.FileSelected(prevFile, it.fullname, nextFile) );
+	}
+
+	void showImage(Image img)
+	{
+		if (img is null) {
+			picBox.image = null;
+			return;
+		}
+		int w0 = img.width, h0 = img.height, w, h, SX=1100, SY=670;
+		limitSize(w0, h0, SX, SY, w, h);
+		picBox.image = img;
+		picBox.bounds = dfl.all.Rect(196+SX/2-w/2, 40+SY/2-h/2, w, h);		
 	}
 
 	private void onSave(Control sender, EventArgs ea)
 	{
-		if (curPic is null) return;
-		Bitmap bmp = curPic.toBitmap();
-		jpgWriter.Write(bmp, "pic.jpg");
-		msgBox("ok");
+		string fname = txtOutFile.text;
+		string orgname;
+		if (imgProc.SaveCurrent(fname, orgname)) {
+			saved[orgname] = true;
+			auto dot = fname.lastIndexOf('.');			
+			txtOutFile.text = succ(fname[0..dot]) ~ ".jpg";
+			lbxFiles.invalidate(true);
+		} else
+			msgBox("save failed, sorry");
+		
 	}
 
 	private void drawItem(Object sender, DrawItemEventArgs ea)
@@ -177,6 +212,11 @@ class MainForm : dfl.form.Form
 			bmp.draw(ea.graphics, Point(ea.bounds.x + 80-w/2, ea.bounds.y + 65-h/2));
 		}
 
+		if (it.fullname in saved) {
+			scope Pen pen = new Pen(Color.fromRgb(0xFF00), 2);
+			ea.graphics.drawRectangle(pen, Rect(ea.bounds.x + 2, ea.bounds.y + 2, ea.bounds.width - 4, ea.bounds.height-4));
+		}
+
 		ea.graphics.drawText(lbxFiles.items[ea.index].toString(), ea.font, ea.foreColor,
 							 Rect(ea.bounds.x + 10, ea.bounds.y + 10, ea.bounds.width - 10, 20));
 		ea.drawFocusRectangle();
@@ -187,14 +227,21 @@ class MainForm : dfl.form.Form
 		imgProc.Stop();
 	}
 
-	void onGotThumb()
+	void onGotThumb(string fname)
 	{
-		lbxFiles.invalidate(true);
+		foreach(i; 0..lbxFiles.items.length) {
+			auto it = cast(FileItem) lbxFiles.items[i];
+			if (it.fullname == fname) {
+				int di = i - lbxFiles.topIndex;
+				if (di >= 0 && di < 6)
+					lbxFiles.invalidate(true);
+				return;
+			}
+		}		
 	}
-
-	Picture curPic;
-	JpegWriter jpgWriter;
+	
 	ImageProcessor imgProc;
+	bool[string] saved;
 }
 
 

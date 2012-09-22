@@ -9,12 +9,6 @@ extern(Windows) {
 					   LONG cbBuffer,     // number of bytes to copy
 					   LPVOID lpvBits     // buffer to receive bits
 					   );
-
-	LONG SetBitmapBits(
-					   HBITMAP hbmp,        // handle to bitmap
-					   DWORD cBytes,        // number of bytes in bitmap array
-					   LPVOID lpBits   // array with bitmap bits
-					   );
 }
 
 alias uint JDIMENSION;
