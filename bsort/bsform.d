@@ -124,6 +124,8 @@ class MainForm : dfl.form.Form
 		lbxFiles.itemHeight = 130;
 		lbxFiles.sorted = false;
 		lbxFiles.selectedValueChanged ~= &OnSelChanged;
+		lbxFiles.keyPress ~= &OnKey;
+		this.keyPress ~= &OnKey;
 
 		closed ~= &OnClose;
 	}
@@ -237,6 +239,16 @@ class MainForm : dfl.form.Form
 					lbxFiles.invalidate(true);
 				return;
 			}
+		}		
+	}
+
+	void OnKey(Control c, KeyPressEventArgs k)
+	{
+		switch(k.keyChar()) {
+			case 'g': onSave(null, null); break;
+			case 'l': if (imgProc.TurnLeft())  showImage(imgProc.current); break;
+			case 'r': if (imgProc.TurnRight()) showImage(imgProc.current); break;
+			default : 
 		}		
 	}
 	

@@ -108,13 +108,17 @@ Bitmap RedPic(int w = 160, int h = 120)
 	return new Bitmap(hbm, true);
 }
 
-Bitmap ReadPicture(string fname)
+Bitmap ReadPicture(string fname, int tries = 0)
 {
 	try {
 		auto p = new Picture(fname);
 		scope(exit) p.dispose();
 		return p.toBitmap();
 	} catch (DflException ex) { //failed
+		if (tries < 3) {
+			core.thread.Thread.sleep( dur!("msecs")(100) );
+			return ReadPicture(fname, tries + 1);
+		}
 		return RedPic(100,100);
 	}
 }
@@ -312,6 +316,44 @@ class ImageProcessor
 		jpgWriter.Write(processed[1].bmp, fname);
 		orgname = processed[1].fname;
 		return true;
+	}
+
+	@property Bitmap current()
+	{
+		return processed[1] ? processed[1].bmp : null;
+	}
+
+	bool Turn90(alias coord_calc)()
+	{
+		if (processed[1] is null || processed[1].bmp is null) return false;
+		int[] src, dst;
+		int w0 = processed[1].bmp.width, h0 = processed[1].bmp.height;
+		int w = h0, h = w0;
+		src.length = w * h;
+		dst.length = w * h;
+		GetBitmapBits(processed[1].bmp.handle, src.length*4, src.ptr);
+		foreach(y; 0..h) {
+			int di = y * w;			
+			foreach(x; 0..w)
+				dst[di + x] = src[mixin(coord_calc)];
+		}
+		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
+		SetBitmapBits(hbm, dst.length*4, dst.ptr);
+		delete src;
+		delete dst;
+		delete processed[1].bmp;
+		processed[1].bmp = new Bitmap(hbm, true);
+		return true;
+	}
+
+	bool TurnLeft()
+	{
+		return Turn90!("x*w0 + w0-1-y");		
+	}
+
+	bool TurnRight()
+	{
+		return Turn90!("(h0-1-x)*w0 + y");
 	}
 
 private:
