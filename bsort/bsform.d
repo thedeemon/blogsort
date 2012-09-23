@@ -29,6 +29,7 @@ class MainForm : dfl.form.Form
 	//~Entice Designer variables begin here.
 	dfl.button.Button btnBrowse;
 	dfl.button.Button btnSave;
+	dfl.button.Button btnZoom;
 	dfl.textbox.TextBox txtOutFile;
 	dfl.label.Label label1;
 	dfl.label.Label label2;
@@ -65,6 +66,12 @@ class MainForm : dfl.form.Form
 		btnSave.text = "Save";
 		btnSave.bounds = dfl.all.Rect(700, 8, 64, 24);
 		btnSave.parent = this;
+		//~DFL dfl.button.Button=btnZoom
+		btnZoom = new dfl.button.Button();
+		btnZoom.name = "btnZoom";
+		btnZoom.text = "Zoom";
+		btnZoom.bounds = dfl.all.Rect(800, 8, 64, 24);
+		btnZoom.parent = this;
 		//~DFL dfl.textbox.TextBox=txtOutFile
 		txtOutFile = new dfl.textbox.TextBox();
 		txtOutFile.name = "txtOutFile";
@@ -118,6 +125,7 @@ class MainForm : dfl.form.Form
 
 		btnBrowse.click ~= &onBrowse;
 		btnSave.click ~= &onSave;
+		btnZoom.click ~= &onZoom;
 		picBox.sizeMode = PictureBoxSizeMode.STRETCH_IMAGE;
 		lbxFiles.drawMode = DrawMode.OWNER_DRAW_FIXED;
 		lbxFiles.drawItem ~= &drawItem;
@@ -248,8 +256,17 @@ class MainForm : dfl.form.Form
 			case 'g': onSave(null, null); break;
 			case 'l': if (imgProc.TurnLeft())  showImage(imgProc.current); break;
 			case 'r': if (imgProc.TurnRight()) showImage(imgProc.current); break;
+			case 'z': onZoom(null, null); break;
 			default : 
 		}		
+	}
+
+	private void onZoom(Control sender, EventArgs ea)
+	{
+		if (picBox.sizeMode == PictureBoxSizeMode.STRETCH_IMAGE)
+			picBox.sizeMode = PictureBoxSizeMode.CENTER_IMAGE;
+		else
+			picBox.sizeMode = PictureBoxSizeMode.STRETCH_IMAGE;
 	}
 	
 	ImageProcessor imgProc;

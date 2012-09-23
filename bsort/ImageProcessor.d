@@ -156,16 +156,12 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 
 	ubyte[] data;
 	data.length = w * h * 4;
-	//writefln("org[%s] data[%s] w0=%s h0=%s w=%s h=%s", org.length, data.length, w0, h0, w, h);
 	foreach(y; 0..h) {
 		int di = y * w * 4;
 		int sy = y * h0 / h;	
-		assert(sy < h0);
-		//writef("sy=%d di=%d, ", sy, di);
 		foreach(x; 0..w) {
 			int sx = x * w0 / w;
 			int si = (sy * w0 + sx) * 4;
-			//writef("si=%d ", si);
 			data[di..di+3] = org[si..si+3];
 			di += 4;
 		}
