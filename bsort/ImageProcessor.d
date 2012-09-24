@@ -1,19 +1,41 @@
 module imageprocessor;
 import dfl.all, std.c.windows.windows, dfl.internal.winapi, std.concurrency, std.range, core.time, std.algorithm;
-import std.typecons, jpg, std.stdio;
+import std.typecons, jpg, std.stdio, std.traits;
+import core.thread : Thread;
 
-class Pic
+class CachedImage
 {
-	string fname;
-	Bitmap bmp;
 	int last_req;
+	string fname;
+	this(int req, string filename) { last_req = req; fname = filename; }
+	abstract void dispose();
+	abstract void dispose() shared;
+}
+
+class Pic : CachedImage
+{
+	Bitmap bmp;
 
 	this(string filename, Bitmap bitmap, int req = 0)
 	{
-		fname = filename; bmp = bitmap; last_req = req;
+		super(req, filename);  bmp = bitmap; 
 	}
 
 	void dispose() { if (bmp) delete bmp; }
+	void dispose() shared { if (bmp) delete bmp; }
+}
+
+class CachedPicture : CachedImage
+{
+	Picture pic;
+
+	this(string filename, Picture pict, int req = 0)
+	{
+		super(req, filename); pic = pict;
+	}
+
+	void dispose() { if (pic) pic.dispose(); }
+	void dispose() shared { if (pic) { auto p = cast(Picture) pic; p.dispose(); } }
 }
 
 void AddToCache(T)(ref T[string] cache, string name, T val, int maxsize)
@@ -121,28 +143,93 @@ Bitmap RedPic(int w = 160, int h = 120)
 	return new Bitmap(hbm, true);
 }
 
-Picture ReadPicture(string fname, int tries = 0)
+class PictureCache
 {
-	try {
-		auto t0 = core.time.TickDuration.currSystemTick;
-		auto p = new Picture(fname);
-		auto dt = core.time.TickDuration.currSystemTick - t0;
-		writefln("picture %s read in %s ms.", fname, dt.msecs);
-		return p;
-	} catch (DflException ex) { //failed
-		if (tries < 3) {
-			core.thread.Thread.sleep( dur!("msecs")(100) );
-			return ReadPicture(fname, tries + 1);
+	CachedPicture[string] pic_cache;
+	bool[string] loading_pics;
+	int pic_req_no = 0;
+
+	Picture Get(string fname) shared
+	{
+		pic_req_no++;
+		if (fname in pic_cache) {
+			auto p = pic_cache[fname];
+			p.last_req = pic_req_no;
+			return cast(Picture) p.pic;
 		}
 		return null;
 	}
+
+	Picture WaitIfLoading(string fname) shared
+	{
+		while(true) {
+			bool loading = false;
+			synchronized(this) {
+				auto loaded = fname in pic_cache;
+				if (loaded) return cast(Picture) pic_cache[fname].pic;
+				loading = !!(fname in loading_pics);
+			}
+			if (loading) {
+				Thread.sleep( dur!("msecs")(77) );
+				continue;
+			}
+			return null; // not found at all
+		}		
+	}
+
+	void Loaded(string name, Picture pic) shared
+	{
+		loading_pics.remove(name);
+		pic_req_no++;		
+		//AddToCache!(shared(CachedPicture))(pic_cache, name, new shared(CachedPicture)(name, pic, pic_req_no), 5);
+		pic_cache[name] = new shared(CachedPicture)(name, pic, pic_req_no);
+		if (pic_cache.length > 5) {
+			auto tbs = pic_cache.byKey().map!(name => tuple(name, pic_cache[name]));
+			auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
+			auto cp = cast(CachedPicture) mp.front[1];
+			cp.dispose();
+			pic_cache.remove(mp.front[0]);
+		}
+	}
+}
+
+shared PictureCache picCache;
+
+Picture ReadPicture(string fname)
+{
+	bool already_loading = false;
+	synchronized(picCache) {
+		auto pic = picCache.Get(fname);
+		if (pic) return pic;
+		already_loading = !!(fname in picCache.loading_pics);
+	}
+	if (already_loading) {
+		auto pic = picCache.WaitIfLoading(fname);
+		if (pic) return pic;
+	}
+	// fname not in cache and not loading. do it now
+	synchronized(picCache) { picCache.loading_pics[fname] = true; }
+	int tries = 3;
+	while(tries > 0) {
+		try {
+			auto t0 = core.time.TickDuration.currSystemTick;
+			auto p = new Picture(fname);
+			auto dt = core.time.TickDuration.currSystemTick - t0;
+			writefln("picture %s read in %s ms.", fname, dt.msecs);
+			picCache.Loaded(fname, p);
+			return p;
+		} catch (DflException ex) { //failed
+			Thread.sleep( dur!("msecs")(100) );
+			tries++;			
+		}
+	}
+	return null; //completely failed to read
 }
 
 Bitmap ReadBitmap(string fname)
 {
-	auto pic = ReadPicture(fname);
-	if (pic) {
-		scope(exit) pic.dispose();
+	auto pic = cast(Picture) ReadPicture(fname);
+	if (pic) {		
 		return pic.toBitmap();
 	} else
 		return RedPic(100,100);
@@ -222,7 +309,7 @@ class Worker
 			auto pic = ReadPicture(jgt.fname);
 			if (pic) {
 				bmp = ResizeToThumb(pic);
-				pic.dispose();
+				//pic.dispose();
 			} else 
 				bmp = cast(shared) RedPic();
 			if (bmp)
@@ -277,6 +364,7 @@ class ImageProcessor
 	{
 		if (workers.length > 0) return;
 		LabourDept.dept = new shared(LabourDept);
+		picCache = new shared(PictureCache);
 		foreach(i; 0..NT) {
 			Tid tid = spawnLinked(&startWorker, thisTid);
 			workers ~= tid;
@@ -384,14 +472,6 @@ private:
 
 	void gotThumb(ThumbCreated tb)
 	{
-		/*thumb_cache[tb.fname] = new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req);
-		if (thumb_cache.length > max_thumbs) {
-			auto tbs = thumb_cache.byKey().map!(name => tuple(name, thumb_cache[name]));
-			auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
-			//delete mp.front[1].bmp;
-			mp.front[1].dispose();
-			thumb_cache.remove(mp.front[0]);
-		}*/
 		AddToCache(thumb_cache, tb.fname, new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req), max_thumbs);
 		if (on_gotthumb !is null) on_gotthumb(tb.fname);
 	}
