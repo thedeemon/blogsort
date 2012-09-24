@@ -12,6 +12,19 @@ class Pic
 	{
 		fname = filename; bmp = bitmap; last_req = req;
 	}
+
+	void dispose() { if (bmp) delete bmp; }
+}
+
+void AddToCache(T)(ref T[string] cache, string name, T val, int maxsize)
+{
+	cache[name] = val;
+	if (cache.length > maxsize) {
+		auto tbs = cache.byKey().map!(name => tuple(name, cache[name]));
+		auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
+		mp.front[1].dispose();
+		cache.remove(mp.front[0]);
+	}
 }
 
 // messages
@@ -108,19 +121,31 @@ Bitmap RedPic(int w = 160, int h = 120)
 	return new Bitmap(hbm, true);
 }
 
-Bitmap ReadPicture(string fname, int tries = 0)
+Picture ReadPicture(string fname, int tries = 0)
 {
 	try {
+		auto t0 = core.time.TickDuration.currSystemTick;
 		auto p = new Picture(fname);
-		scope(exit) p.dispose();
-		return p.toBitmap();
+		auto dt = core.time.TickDuration.currSystemTick - t0;
+		writefln("picture %s read in %s ms.", fname, dt.msecs);
+		return p;
 	} catch (DflException ex) { //failed
 		if (tries < 3) {
 			core.thread.Thread.sleep( dur!("msecs")(100) );
 			return ReadPicture(fname, tries + 1);
 		}
-		return RedPic(100,100);
+		return null;
 	}
+}
+
+Bitmap ReadBitmap(string fname)
+{
+	auto pic = ReadPicture(fname);
+	if (pic) {
+		scope(exit) pic.dispose();
+		return pic.toBitmap();
+	} else
+		return RedPic(100,100);
 }
 
 shared(Bitmap) ResizeToThumb(Picture pic)
@@ -194,20 +219,19 @@ class Worker
 		auto jgt = cast(JGetThumb) job;
 		if (jgt) { // GetThumb
 			shared(Bitmap) bmp;
-			try {
-				auto pic = new Picture(jgt.fname);
-				scope(exit) pic.dispose();
-				bmp = ResizeToThumb(pic);				
-			} catch (DflException ex) {
+			auto pic = ReadPicture(jgt.fname);
+			if (pic) {
+				bmp = ResizeToThumb(pic);
+				pic.dispose();
+			} else 
 				bmp = cast(shared) RedPic();
-			}
 			if (bmp)
 				iptid.send(ThumbCreated(jgt.fname, bmp, jgt.req));			
 			return;
 		}
 		auto jprep = cast(JPrepare) job;
 		if (jprep) { //prepare: read and resize to blog size
-			auto bmp = ResizeForBlog(ReadPicture(jprep.fname));
+			auto bmp = ResizeForBlog(ReadBitmap(jprep.fname));
 			if (bmp)
 				iptid.send(Prepared(jprep.fname, bmp));			
 			return;
@@ -299,7 +323,7 @@ class ImageProcessor
 		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile));
 		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile));
 		if (processed[1] is null) {	//prepare now
-			auto bmp = ResizeForBlog(ReadPicture(curFile));
+			auto bmp = ResizeForBlog(ReadBitmap(curFile));
 			processed[1] = new Pic(curFile, cast(Bitmap)bmp);
 			return cast(Bitmap)bmp;
 		}
@@ -360,13 +384,15 @@ private:
 
 	void gotThumb(ThumbCreated tb)
 	{
-		thumb_cache[tb.fname] = new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req);
+		/*thumb_cache[tb.fname] = new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req);
 		if (thumb_cache.length > max_thumbs) {
 			auto tbs = thumb_cache.byKey().map!(name => tuple(name, thumb_cache[name]));
 			auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
-			delete mp.front[1].bmp;
+			//delete mp.front[1].bmp;
+			mp.front[1].dispose();
 			thumb_cache.remove(mp.front[0]);
-		}
+		}*/
+		AddToCache(thumb_cache, tb.fname, new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req), max_thumbs);
 		if (on_gotthumb !is null) on_gotthumb(tb.fname);
 	}
 
