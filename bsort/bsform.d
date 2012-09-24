@@ -5,6 +5,7 @@
 */
 
 import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor, std.algorithm, std.array;
+version(verbose) import std.stdio;
 
 class FileItem
 {
@@ -134,6 +135,10 @@ class MainForm : dfl.form.Form
 		lbxFiles.selectedValueChanged ~= &OnSelChanged;
 		lbxFiles.keyPress ~= &OnKey;
 		this.keyPress ~= &OnKey;
+		txtWidth.keyPress ~= &OnOutSizeChange;
+		txtHeight.keyPress ~= &OnOutSizeChange;
+		txtWidth.lostFocus ~= &OnOutSizeChange;
+		txtHeight.lostFocus ~= &OnOutSizeChange;
 
 		closed ~= &OnClose;
 	}
@@ -176,12 +181,17 @@ class MainForm : dfl.form.Form
 	{
 		int i = lbxFiles.selectedIndex;
 		if (i < 0) return;
+		auto n = lbxFiles.items.length;
 		auto it = cast(FileItem) lbxFiles.items[i];
 		auto prev = i > 0 ? cast(FileItem) lbxFiles.items[i-1] : null;
-		auto next = i < lbxFiles.items.length - 1 ? cast(FileItem) lbxFiles.items[i+1] : null;
+		auto next = i < n - 1 ? cast(FileItem) lbxFiles.items[i+1] : null;
 		string prevFile = prev ? prev.fullname : null;
 		string nextFile = next ? next.fullname : null;
 		showImage( imgProc.FileSelected(prevFile, it.fullname, nextFile) );
+		int top = lbxFiles.topIndex;
+		if (i > 0 && i == top) lbxFiles.topIndex = top - 1;
+		else
+		if (i == top + 4 && top + 5 < n) lbxFiles.topIndex = top + 1;
 	}
 
 	void showImage(Image img)
@@ -194,6 +204,7 @@ class MainForm : dfl.form.Form
 		limitSize(w0, h0, SX, SY, w, h);
 		picBox.image = img;
 		picBox.bounds = dfl.all.Rect(196+SX/2-w/2, 40+SY/2-h/2, w, h);		
+		picBox.invalidate(true);
 	}
 
 	private void onSave(Control sender, EventArgs ea)
@@ -206,8 +217,7 @@ class MainForm : dfl.form.Form
 			txtOutFile.text = succ(fname[0..dot]) ~ ".jpg";
 			lbxFiles.invalidate(true);
 		} else
-			msgBox("save failed, sorry");
-		
+			msgBox("save failed, sorry");		
 	}
 
 	private void drawItem(Object sender, DrawItemEventArgs ea)
@@ -261,6 +271,19 @@ class MainForm : dfl.form.Form
 		}		
 	}
 
+	void OnOutSizeChange(Control c, EventArgs k)
+	{
+		try { 
+			int w = to!int(txtWidth.text);
+			int h = to!int(txtHeight.text);
+			version(verbose) writeln("new target size: ",w, "x",h);
+			if (w > 0 && h > 0) {
+				ImageProcessor.maxOutX = w;
+				ImageProcessor.maxOutY = h;
+			}
+		} catch(ConvException ex) { }
+	}
+
 	private void onZoom(Control sender, EventArgs ea)
 	{
 		if (picBox.sizeMode == PictureBoxSizeMode.STRETCH_IMAGE)
@@ -272,27 +295,3 @@ class MainForm : dfl.form.Form
 	ImageProcessor imgProc;
 	bool[string] saved;
 }
-
-
-/*int main()
-{
-	int result = 0;
-	
-	try
-	{
-		Application.enableVisualStyles();
-		
-		//@  Other application initialization code here.
-		
-		Application.run(new MyForm());
-	}
-	catch(Object o)
-	{
-		msgBox(o.toString(), "Fatal Error", MsgBoxButtons.OK, MsgBoxIcon.ERROR);
-		
-		result = 1;
-	}
-	
-	return result;
-}
-*/

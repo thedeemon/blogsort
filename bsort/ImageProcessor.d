@@ -1,7 +1,8 @@
 module imageprocessor;
 import dfl.all, std.c.windows.windows, dfl.internal.winapi, std.concurrency, std.range, core.time, std.algorithm;
-import std.typecons, jpg, std.stdio, std.traits;
+import std.typecons, jpg, std.traits;
 import core.thread : Thread;
+version(verbose) import std.stdio; 
 
 class CachedImage
 {
@@ -75,7 +76,8 @@ class JGetThumb : Job
 
 class JPrepare : Job //read and resize to blogsize
 {
-	this(string filename) { super(Priority.Soon, filename); }
+	int angle;
+	this(string filename, int rotation) { super(Priority.Soon, filename); angle = rotation; }
 	string toString() const { return "Prepare " ~ fname; }
 }
 
@@ -84,14 +86,14 @@ synchronized class LabourDept
 	void PostJob(shared Job job)
 	{
 		auto j = cast(Job)job;
-		writeln("PostJob: ", j);
+		version(verbose) writeln("PostJob: ", j);
 		foreach(existing; jobs[job.prio]) {
 			if (existing.fname == job.fname) {
 				auto jgt = cast(JGetThumb) job;
 				auto egt = cast(JGetThumb) existing;
 				if (jgt && egt)
 					egt.req = max(egt.req, jgt.req);
-				writeln("already in queue");
+				version(verbose) writeln("already in queue");
 				return;
 			}
 		}
@@ -108,7 +110,7 @@ synchronized class LabourDept
 				auto job = jobs[p][0];
 				jobs[p] = jobs[p][1..$];
 				auto j = cast(Job)job;
-				writeln("run job ", j);
+				version(verbose) writeln("run job ", j);
 				return job;
 			}
 		}
@@ -148,6 +150,7 @@ class PictureCache
 	CachedPicture[string] pic_cache;
 	bool[string] loading_pics;
 	int pic_req_no = 0;
+	immutable maxPics = 5;
 
 	Picture Get(string fname) shared
 	{
@@ -177,13 +180,13 @@ class PictureCache
 		}		
 	}
 
-	void Loaded(string name, Picture pic) shared
+	synchronized void Loaded(string name, Picture pic) 
 	{
 		loading_pics.remove(name);
 		pic_req_no++;		
 		//AddToCache!(shared(CachedPicture))(pic_cache, name, new shared(CachedPicture)(name, pic, pic_req_no), 5);
 		pic_cache[name] = new shared(CachedPicture)(name, pic, pic_req_no);
-		if (pic_cache.length > 5) {
+		if (pic_cache.length > maxPics) {
 			auto tbs = pic_cache.byKey().map!(name => tuple(name, pic_cache[name]));
 			auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
 			auto cp = cast(CachedPicture) mp.front[1];
@@ -212,10 +215,10 @@ Picture ReadPicture(string fname)
 	int tries = 3;
 	while(tries > 0) {
 		try {
-			auto t0 = core.time.TickDuration.currSystemTick;
+			version(verbose) auto t0 = core.time.TickDuration.currSystemTick;
 			auto p = new Picture(fname);
-			auto dt = core.time.TickDuration.currSystemTick - t0;
-			writefln("picture %s read in %s ms.", fname, dt.msecs);
+			version(verbose) auto dt = core.time.TickDuration.currSystemTick - t0;
+			version(verbose) writefln("picture %s read in %s ms.", fname, dt.msecs);
 			picCache.Loaded(fname, p);
 			return p;
 		} catch (DflException ex) { //failed
@@ -259,25 +262,103 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 	int orgsz = w0 * h0 * 4;
 	org.length = orgsz;	
 	scope(exit) delete org;	
-	auto r = GetBitmapBits(orgbmp.handle, org.length, org.ptr);
-	assert(r==orgsz);
+	auto res = GetBitmapBits(orgbmp.handle, org.length, org.ptr);
+	assert(res==orgsz);
 
 	limitSize(w0, h0, ImageProcessor.maxOutX, ImageProcessor.maxOutY, w, h);
 	if (w>=w0 && h>=h0) 
 		return cast(shared(Bitmap))orgbmp;
 
+	version(verbose) auto tt0 = core.time.TickDuration.currSystemTick;
 	ubyte[] data;
 	data.length = w * h * 4;
-	foreach(y; 0..h) {
-		int di = y * w * 4;
-		int sy = y * h0 / h;	
+	double[3][] row;
+	row.length = w;
+	real h0h = cast(real) h0 / h, w0w = cast(real) w0 / w, t0, t1;
+	double[] sh0, sh1;
+	int[] aisx0, aisx1;
+	aisx0.length = w; aisx1.length = w; sh0.length = w; sh1.length = w;
+	immutable eps = 1.0 / 256;
+	foreach(x; 0..w) {
+		real sx0 = x * w0w, sx1 = (x+1) * w0w;
+		aisx0[x] = cast(int) sx0;
+		aisx1[x] = cast(int) sx1;
+		sh0[x] = (1.0 - std.math.modf(sx0, t0)) / w0w;
+		sh1[x] = std.math.modf(sx1, t1) / w0w;
+	}
+	aisx1[$-1] = aisx0[$-1];
+	double kx = 1 / w0w, ky = 1 / h0h;
+	
+	foreach(y; 0..h) {		
+		/*int sy = y * h0 / h;	//nearest neighbor
 		foreach(x; 0..w) {
 			int sx = x * w0 / w;
 			int si = (sy * w0 + sx) * 4;
 			data[di..di+3] = org[si..si+3];
 			di += 4;
+		}*/
+		real sy0 = h0h * y, sy1 = h0h * (y+1);
+		int isy0 = cast(int) sy0;
+		int isy1 = cast(int) sy1;
+		double ysh0 = (1.0 - std.math.modf(sy0, t0)) / h0h;
+		double ysh1 = std.math.modf(sy1, t1) / h0h;
+		if (y==h-1) isy1 = isy0;
+
+		void addRow(int rsi, double rk) {
+			foreach(x; 0..w) {
+				int si = rsi + aisx0[x] * 4;
+				if (aisx1[x] > aisx0[x]) { // several pixels
+					double r = org[si] * sh0[x];
+					double g = org[si+1] * sh0[x];
+					double b = org[si+2] * sh0[x];
+					int sx = aisx0[x] + 1;
+					while(sx < aisx1[x]) {
+						si += 4;
+						r += org[si] * kx;
+						g += org[si+1] * kx;
+						b += org[si+2] * kx;
+						sx++;
+					}
+					si += 4;
+					r += org[si] * sh1[x];
+					g += org[si+1] * sh1[x];
+					b += org[si+2] * sh1[x];
+					row[x][0] += r * rk; row[x][1] += g * rk; row[x][2] += b * rk;
+				} else { // just one pixel					
+					row[x][0] += org[si] * rk;
+					row[x][1] += org[si+1] * rk;
+					row[x][2] += org[si+2] * rk;
+				}
+			} //for x
+		} //addRow
+
+		foreach(ref px; row) px[0..3] = 0;
+		int rsi = isy0 * w0 * 4;
+
+		if (isy1 > isy0) { // several rows
+			addRow(rsi, ysh0);
+			int sy = isy0 + 1;
+			while(sy < isy1) {
+				rsi += w0 * 4;
+				addRow(rsi, ky);
+				sy++;
+			}
+			rsi += w0 * 4;
+			addRow(rsi, ysh1);
+		} else { //one pixel row
+			addRow(rsi, 1.0);
 		}
+		int di = y * w * 4;
+		foreach(x; 0..w) {
+			data[di] = cast(ubyte) row[x][0];
+			data[di+1] = cast(ubyte) row[x][1];
+			data[di+2] = cast(ubyte) row[x][2];
+			di += 4;
+		}
+
 	}	
+	version(verbose) auto dt = core.time.TickDuration.currSystemTick - tt0;
+	version(verbose) writefln("resized in %s ms", dt.msecs);
 	HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
 	SetBitmapBits(hbm, data.length, data.ptr);
 	delete data;
@@ -305,20 +386,17 @@ class Worker
 		if (job is null) return;
 		auto jgt = cast(JGetThumb) job;
 		if (jgt) { // GetThumb
-			shared(Bitmap) bmp;
-			auto pic = ReadPicture(jgt.fname);
-			if (pic) {
-				bmp = ResizeToThumb(pic);
-				//pic.dispose();
-			} else 
-				bmp = cast(shared) RedPic();
+			auto pic = ReadPicture(jgt.fname);			
+			auto bmp = pic ? ResizeToThumb(pic) : cast(shared) RedPic();
 			if (bmp)
 				iptid.send(ThumbCreated(jgt.fname, bmp, jgt.req));			
 			return;
 		}
 		auto jprep = cast(JPrepare) job;
 		if (jprep) { //prepare: read and resize to blog size
-			auto bmp = ResizeForBlog(ReadBitmap(jprep.fname));
+			auto srcbmp = ReadBitmap(jprep.fname);
+			auto turned = ImageProcessor.Rotate( srcbmp, jprep.angle );
+			auto bmp = ResizeForBlog(turned);
 			if (bmp)
 				iptid.send(Prepared(jprep.fname, bmp));			
 			return;
@@ -408,10 +486,12 @@ class ImageProcessor
 			if (!used[i] && processed[i]) delete processed[i].bmp;
 			processed[i] = pix[i];
 		}
-		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile));
-		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile));
+		int rot(string name) { return rotations.get(name, 0); }
+		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile, rot(nextFile)));
+		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile, rot(prevFile)));
 		if (processed[1] is null) {	//prepare now
-			auto bmp = ResizeForBlog(ReadBitmap(curFile));
+			auto srcbmp = ReadBitmap(curFile);
+			auto bmp = ResizeForBlog( ApplyRotation(srcbmp, curFile) );
 			processed[1] = new Pic(curFile, cast(Bitmap)bmp);
 			return cast(Bitmap)bmp;
 		}
@@ -431,15 +511,32 @@ class ImageProcessor
 		return processed[1] ? processed[1].bmp : null;
 	}
 
-	bool Turn90(alias coord_calc)()
+	static Bitmap TurnAround(Bitmap bmp)
 	{
-		if (processed[1] is null || processed[1].bmp is null) return false;
 		int[] src, dst;
-		int w0 = processed[1].bmp.width, h0 = processed[1].bmp.height;
+		int w = bmp.width, h = bmp.height;
+		src.length = w * h;	dst.length = w * h;
+		GetBitmapBits(bmp.handle, src.length*4, src.ptr);
+		foreach(y; 0..h) {
+			int di = y * w;			
+			foreach(x; 0..w)
+				dst[di + x] = src[(h-1-y)*w + w-1-x];
+		}
+		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
+		SetBitmapBits(hbm, dst.length*4, dst.ptr);
+		delete src;
+		delete dst;
+		return new Bitmap(hbm, true);
+	}
+
+	static Bitmap TurnBitmap(alias coord_calc)(Bitmap bmp)
+	{
+		int[] src, dst;
+		int w0 = bmp.width, h0 = bmp.height;
 		int w = h0, h = w0;
 		src.length = w * h;
 		dst.length = w * h;
-		GetBitmapBits(processed[1].bmp.handle, src.length*4, src.ptr);
+		GetBitmapBits(bmp.handle, src.length*4, src.ptr);
 		foreach(y; 0..h) {
 			int di = y * w;			
 			foreach(x; 0..w)
@@ -449,19 +546,51 @@ class ImageProcessor
 		SetBitmapBits(hbm, dst.length*4, dst.ptr);
 		delete src;
 		delete dst;
-		delete processed[1].bmp;
-		processed[1].bmp = new Bitmap(hbm, true);
+		return new Bitmap(hbm, true);
+	}
+
+	bool Turn90(int angle_delta)
+	{
+		if (processed[1] is null || processed[1].bmp is null) return false;
+		int angle = angle_delta;
+		if (processed[1].fname in rotations)
+			angle += rotations[processed[1].fname];
+		delete processed[1].bmp; // don't need the old one		
+		auto srcbmp = ReadBitmap(processed[1].fname);
+		rotations[processed[1].fname] = angle;
+		auto turned = ApplyRotation(srcbmp, processed[1].fname);
+		processed[1].bmp = cast(Bitmap) ResizeForBlog(turned);
 		return true;
 	}
 
 	bool TurnLeft()
 	{
-		return Turn90!("x*w0 + w0-1-y");		
+		return Turn90(1);		
 	}
 
 	bool TurnRight()
 	{
-		return Turn90!("(h0-1-x)*w0 + y");
+		return Turn90(3);
+	}
+
+	static Bitmap Rotate(Bitmap srcbmp, int angle)
+	{
+		Bitmap turned;
+		switch(angle & 3) {
+			case 0: turned = srcbmp; break;
+			case 1: turned = TurnBitmap!("x*w0 + w0-1-y")( srcbmp ); break;
+			case 2: turned = TurnAround( srcbmp ); break; 
+			case 3: turned = TurnBitmap!("(h0-1-x)*w0 + y")( srcbmp ); break;
+			default:
+		}		
+		if (angle & 3) delete srcbmp;
+		return turned;
+	}
+
+	Bitmap ApplyRotation(Bitmap srcbmp, string fname)
+	{
+		if (fname !in rotations) return srcbmp;
+		return Rotate( srcbmp, rotations[fname] );
 	}
 
 private:
@@ -502,4 +631,5 @@ private:
 	Pic[3] processed;
 	string[3] requested;
 	JpegWriter jpgWriter;
+	int[string] rotations;
 }
