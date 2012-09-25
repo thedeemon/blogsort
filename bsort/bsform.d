@@ -199,6 +199,14 @@ class MainForm : dfl.form.Form
 		btnHorizonClear.click ~= &clearMarks;
 		btnHorizonLineup.click ~= &lineUpHorizon;
 		this.resize ~= &OnResize;
+
+		toolTip = new ToolTip;
+		toolTip.setToolTip(btnSave, "Save current image (key: g)");
+		toolTip.setToolTip(btnTurnLeft, "Turn 90° left (key: l)");
+		toolTip.setToolTip(btnTurnRight, "Turn 90° right (key: r)");
+		toolTip.setToolTip(btnHorizonClear, "Clear the horizon marks");
+		toolTip.setToolTip(btnHorizonLineup, "Rotate the image to make marks on one horizontal line");
+		toolTip.setToolTip(btnZoom, "Switch between 100% fit and 1:1 scales (key: z)");
 	}
 
 private:
@@ -528,6 +536,7 @@ private:
 	ImageProcessor imgProc;
 	bool[string] saved;
 	Point[2] horMarks;
+	ToolTip toolTip;
 
 	version(rotatest) {
 	Timer rtimer; // for experiments 
