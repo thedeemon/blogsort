@@ -1,6 +1,6 @@
 module imageprocessor;
 import dfl.all, std.c.windows.windows, dfl.internal.winapi, std.concurrency, std.range, core.time, std.algorithm;
-import std.typecons, jpg, std.traits;
+import std.typecons, jpg, std.math;
 import core.thread : Thread;
 version(verbose) import std.stdio; 
 
@@ -77,7 +77,8 @@ class JGetThumb : Job
 class JPrepare : Job //read and resize to blogsize
 {
 	int angle;
-	this(string filename, int rotation) { super(Priority.Soon, filename); angle = rotation; }
+	double fangle;
+	this(string filename, int rotation, double frot) { super(Priority.Soon, filename); angle = rotation; fangle = frot; }
 	string toString() const { return "Prepare " ~ fname; }
 }
 
@@ -396,6 +397,11 @@ class Worker
 		if (jprep) { //prepare: read and resize to blog size
 			auto srcbmp = ReadBitmap(jprep.fname);
 			auto turned = ImageProcessor.Rotate( srcbmp, jprep.angle );
+			if (abs(jprep.fangle) > 0.0001) {
+				auto rotated = ImageProcessor.FineRotate(turned, jprep.fangle);
+				delete turned;
+				turned = rotated;
+			}
 			auto bmp = ResizeForBlog(turned);
 			if (bmp)
 				iptid.send(Prepared(jprep.fname, bmp));			
@@ -411,6 +417,30 @@ void startWorker(Tid iptid)
 {
 	auto w = new Worker(iptid); 
 	w.run();
+}
+
+struct Vec 
+{
+	int x, y;
+
+	this(int X, int Y) { x = X; y = Y; }
+	this(Point p) { x = p.x; y = p.y; }
+	this(Size sz) { x = sz.width; y = sz.height; }
+
+	Vec opSub(Vec v) { return Vec(x - v.x, y - v.y); }
+	Vec opAdd(Vec v) { return Vec(x + v.x, y + v.y); }
+	int mul(Vec v) { return x * v.y - y * v.x; }
+}
+
+bool insideRect(Vec p, ref Vec[4] ps)
+{
+	int[4] s; //signs
+	foreach(i; 0..4) {
+		Vec to_p = p - ps[i];
+		Vec to_next = ps[(i+1) & 3] - ps[i];
+		s[i] = sgn( to_p.mul(to_next) );
+	}
+	return (s[0] == s[1] && s[2] == s[3] && s[1] == s[2]);		
 }
 
 class ImageProcessor
@@ -486,11 +516,18 @@ class ImageProcessor
 			processed[i] = pix[i];
 		}
 		int rot(string name) { return rotations.get(name, 0); }
-		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile, rot(nextFile)));
-		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile, rot(prevFile)));
+		double frot(string name) { return fine_rotations.get(name, 0.0); }
+		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile, rot(nextFile), frot(nextFile)));
+		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile, rot(prevFile), frot(prevFile)));
 		if (processed[1] is null) {	//prepare now
 			auto srcbmp = ReadBitmap(curFile);
-			auto bmp = ResizeForBlog( ApplyRotation(srcbmp, curFile) );
+			auto turned = ApplyRotation(srcbmp, curFile);
+			if (curFile in fine_rotations) {
+				auto rotated = FineRotate(turned, fine_rotations[curFile]);
+				delete turned;
+				turned = rotated;
+			}
+			auto bmp = ResizeForBlog( turned );
 			processed[1] = new Pic(curFile, cast(Bitmap)bmp);
 			return cast(Bitmap)bmp;
 		}
@@ -525,8 +562,12 @@ class ImageProcessor
 		if (processed[1] is null || processed[1].bmp is null) return false;
 		auto srcbmp = ReadBitmap(processed[1].fname);
 		auto turned = ApplyRotation(srcbmp, processed[1].fname);
-		int w0 = turned.width, h0 = turned.height;
-
+		if (processed[1].fname in fine_rotations) 
+			angle += fine_rotations[processed[1].fname];
+		fine_rotations[processed[1].fname] = angle;
+		auto rotated = FineRotate(turned, angle);
+		delete processed[1].bmp; // don't need the old one
+		processed[1].bmp = cast(Bitmap) ResizeForBlog(rotated);
 		return true;
 	}
 
@@ -604,6 +645,65 @@ private:
 		return new Bitmap(hbm, true);
 	}
 
+	static Bitmap FineRotate(Bitmap turned, double angle)
+	{
+		int w0 = turned.width, h0 = turned.height;
+		int w2 = w0/2, h2 = h0/2; 		
+		real x1 = w2 * cos(angle) - h2 * sin(angle);
+		real y1 = w2 * sin(angle) + h2 * cos(angle);
+		int ix = cast(int)x1;
+		int iy = cast(int)y1;
+
+		real x2, y2;
+		if (w0 >= h0) {
+			x2 = -w2 * cos(angle) - h2 * sin(angle);
+			y2 = -w2 * sin(angle) + h2 * cos(angle);
+		} else {
+			x2 = w2 * cos(angle) + h2 * sin(angle);
+			y2 = w2 * sin(angle) - h2 * cos(angle);
+		}
+		int ix2 = cast(int)x2;
+		int iy2 = cast(int)y2;
+
+		int maxarea = 0, bx=0, by=0;
+		Vec[4] rc = [Vec(ix,iy), Vec(ix2,iy2), Vec(-ix,-iy), Vec(-ix2, -iy2)];
+		foreach(pt; 0..100) {
+			int px = pt * ix / 100 + (100-pt) * ix2 / 100;
+			int py = pt * iy / 100 + (100-pt) * iy2 / 100;
+			bool inside = insideRect(Vec(px, -py), rc);
+			int area = abs(py) * abs(px);
+			if (inside && area > maxarea) {
+				maxarea = area;
+				bx = px; by = py;
+			}
+		}
+		bx = abs(bx); by = abs(by);
+		int w = 2*bx, h = 2*by;
+		int[] src, dst;		
+		src.length = w0 * h0; dst.length = w * h;
+		GetBitmapBits(turned.handle, src.length*4, src.ptr);
+		foreach(y; 0..h) {
+			int di = y * w;	
+			real sx = -bx * cos(angle) - (-by + y) * sin(angle) + w2;
+			real sy = -bx * sin(angle) + (-by + y) * cos(angle) + h2;
+			real dx = cos(angle), dy = sin(angle);
+			foreach(x; 0..w) {
+				int isx = cast(int)sx, isy = cast(int)sy;
+				if (isx < 0) isx = 0;
+				if (isx >= w0) isx = w0 - 1;
+				if (isy < 0) isy = 0;
+				if (isy >= h0) isy = h0 - 1;
+				dst[di + x] = src[isy*w0 + isx];
+				sx += dx; sy += dy;
+			}
+		}
+		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
+		SetBitmapBits(hbm, dst.length*4, dst.ptr);
+		delete src;
+		delete dst;
+		return new Bitmap(hbm, true);
+	}
+
 	void onTimer(Timer sender, EventArgs ea)
 	{
 		while(receiveTimeout(dur!"msecs"(0), &gotThumb, &linkDied, &gotResized)) {}
@@ -642,4 +742,5 @@ private:
 	string[3] requested;
 	JpegWriter jpgWriter;
 	int[string] rotations;
+	double[string] fine_rotations;
 }

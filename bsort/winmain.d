@@ -1,7 +1,6 @@
 module winmain;
-
-import core.runtime, std.c.windows.windows, std.stdio, std.traits;
-import dfl.application, bsform;
+import core.runtime, std.c.windows.windows, dfl.application, bsform;
+version(verbose) import std.stdio;
 
 extern (Windows)
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
@@ -18,7 +17,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
         result = myWinMain(hInstance, hPrevInstance, lpCmdLine, nCmdShow);		
         Runtime.terminate(/*&exceptionHandler*/null);
     }  catch (Throwable o)	{	// catch any uncaught exceptions    
-		writeln(o, o.file, o.line, o.info);
+		version(verbose) writeln(o, o.file, o.line, o.info);
         MessageBoxA(null, cast(char *)o.toString(), "Error", MB_OK | MB_ICONEXCLAMATION);
         result = 0;		// failed
     }

@@ -5,7 +5,8 @@
 */
 
 import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor, std.algorithm, std.array;
-version(verbose) import std.stdio, std.math;
+version(verbose) import std.stdio;
+version(rotatest) import std.math;
 
 class FileItem
 {
@@ -184,6 +185,7 @@ class MainForm : dfl.form.Form
 		lbxFiles.selectedValueChanged ~= &OnSelChanged;
 		lbxFiles.keyPress ~= &OnKey;
 		this.keyPress ~= &OnKey;
+		picBox.keyPress ~= &OnKey;
 		txtWidth.keyPress ~= &OnOutSizeChange;
 		txtHeight.keyPress ~= &OnOutSizeChange;
 		txtWidth.lostFocus ~= &OnOutSizeChange;
@@ -193,9 +195,10 @@ class MainForm : dfl.form.Form
 		picBox.mouseLeave ~= &onMouseUp;
 		picBox.mouseMove ~= &onMouseMove;
 		picBox.paint ~= &paintMarks;
-		closed ~= &OnClose;
+		this.closed ~= &OnClose;
 		btnHorizonClear.click ~= &clearMarks;
 		btnHorizonLineup.click ~= &lineUpHorizon;
+		this.resize ~= &OnResize;
 	}
 
 private:
@@ -247,7 +250,7 @@ private:
 		int top = lbxFiles.topIndex;
 		if (i > 0 && i == top) lbxFiles.topIndex = top - 1;
 		else
-		if (i == top + 4 && top + 5 < n) lbxFiles.topIndex = top + 1;
+		if (i >= top + 4 && top + 5 < n) lbxFiles.topIndex = top + 1;
 	}
 
 	void showImage(Image img)
@@ -256,21 +259,33 @@ private:
 			picBox.image = null;
 			return;
 		}
-		int w0 = img.width, h0 = img.height, w, h, SX=1100, SY=670;
+		int w0 = img.width, h0 = img.height, w, h, SX=bounds.width-200, SY=bounds.height-80;
 		limitSize(w0, h0, SX, SY, w, h);
 		picBox.image = img;
 		picBox.bounds = dfl.all.Rect(196+SX/2-w/2, 40+SY/2-h/2, w, h);		
 		picBox.invalidate(true);
 	}
 
+	string nextName(string fname)
+	{
+		auto dot = fname.lastIndexOf('.');
+		return succ(fname[0..dot]) ~ ".jpg";
+	}
+
 	void onSave(Control sender, EventArgs ea)
 	{
-		string fname = txtOutFile.text;
-		string orgname;
+		string fname = txtOutFile.text, orgname;
+		if (fname.exists) {
+			if (msgBox("File " ~ fname ~ " exists. Overwrite?", "Warning", MsgBoxButtons.YES_NO, MsgBoxIcon.WARNING)==DialogResult.NO) {
+				while(fname.exists) 
+					fname = nextName(fname);
+				txtOutFile.text = fname;
+				return;
+			}
+		}
 		if (imgProc.SaveCurrent(fname, orgname)) {
-			saved[orgname] = true;
-			auto dot = fname.lastIndexOf('.');			
-			txtOutFile.text = succ(fname[0..dot]) ~ ".jpg";
+			saved[orgname] = true;			
+			txtOutFile.text = nextName(fname);
 			lbxFiles.invalidate(true);
 		} else
 			msgBox("save failed, sorry");		
@@ -376,7 +391,7 @@ private:
 
 	void paintMarks(Control c, PaintEventArgs pa)
 	{	
-		if (rotatesting) {
+		version(rotatest) { if (rotatesting) {
 			real a = (cast(real)ang) * 3.14159265 / 180;
 			int w2 = 250, h2 = 150; // /2		
 			real x = w2 * cos(a) - h2 * sin(a);
@@ -397,16 +412,14 @@ private:
 			pa.graphics.drawLine(pen, cx - ix2, cy - iy2, cx + ix, cy + iy);
 
 			if (iy == iy2) return; // not rotated
-			Point bestpt;
 			int maxarea = 0, bx=0, by=0;
+			Vec[4] rc = [Vec(ix,iy), Vec(ix2,iy2), Vec(-ix,-iy), Vec(-ix2, -iy2)];
 			foreach(pt; 0..100) {
 				int px = pt * ix / 100 + (100-pt) * ix2 / 100;
 				int py = pt * iy / 100 + (100-pt) * iy2 / 100;
-				bool inside = false;
-				if (iy2 > iy && px > 0) inside = true;
-				if (iy2 < iy && px < 0) inside = true;
+				bool inside = insideRect(Vec(px, -py), rc);
 				if (inside) pa.graphics.drawEllipse(red, cx+px, cy+py, 3, 3);
-				int area = py*py + px*px;
+				int area = abs(py) * abs(px);
 				if (inside && area > maxarea) {
 					maxarea = area;
 					bx = px; by = py;
@@ -416,8 +429,15 @@ private:
 			pa.graphics.drawLine(red, cx - bx, cy + by, cx - bx, cy - by);
 			pa.graphics.drawLine(red, cx - bx, cy - by, cx + bx, cy - by);
 			pa.graphics.drawLine(red, cx + bx, cy - by, cx + bx, cy + by);
+			/*Vec[4] rc = [Vec(ix,iy), Vec(ix2,iy2), Vec(-ix,-iy), Vec(-ix2, -iy2)];
+			foreach(n; 0..1500) {
+				Vec v = Vec(std.random.uniform(-300, 300), std.random.uniform(-300, 300));
+				if (insideRect(v, rc))
+					pa.graphics.drawEllipse(red, cx+v.x, cy+v.y, 3, 3);
+			}*/
 
 			return;
+		}
 		}
 		scope Pen pen = new Pen(Color.fromRgb(0xff));
 		foreach(m; horMarks) 
@@ -438,10 +458,12 @@ private:
 
 	void clearMarks(Control sender, EventArgs ea)
 	{
-		if (rotatesting) {
-			rtimer.stop();
-			rotatesting = false;
-			return;
+		version(rotatest) {
+			if (rotatesting) {
+				rtimer.stop();
+				rotatesting = false;
+				return;
+			}
 		}
 
 		foreach(ref m; horMarks) {
@@ -452,17 +474,40 @@ private:
 
 	void lineUpHorizon(Control sender, EventArgs ea)
 	{
-		/*foreach(m; horMarks) if (m.x==0 && m.y==0) return;
-		if (horMarks[0].x == horMarks[1].x) return;
+		foreach(m; horMarks) if (m.x==0 && m.y==0) return;
+		if (horMarks[0].x == horMarks[1].x || horMarks[0].y == horMarks[1].y) return;
 		int i = 0;
 		if (horMarks[1].x < horMarks[0].x) i = 1;
 		int dx = horMarks[i ^ 1].x - horMarks[i].x;
 		int dy = horMarks[i ^ 1].y - horMarks[i].y;
 		double angle = std.math.atan2(cast(double)dy, cast(double)dx);
-		writeln("angle=", angle*180/3.14159265);*/
-		StartRotation();
+		version(verbose) writeln("angle=", angle*180/3.14159265);
+		version(rotatest) StartRotation();
+		else {
+			if (imgProc.FineRotation(angle)) { 
+				foreach(ref m; horMarks) { m.x = 0; m.y = 0; }
+				showImage(imgProc.current);
+			}
+		}
 	}
 
+	void OnResize(Control,EventArgs)
+	{
+		version(verbose) writeln("Resized: ", bounds);		
+		if (picBox.image is null) return;
+		auto img = picBox.image;
+		int w0 = img.width, h0 = img.height, w, h, SX=bounds.width-200, SY=bounds.height-80;
+		limitSize(w0, h0, SX, SY, w, h);
+		picBox.bounds = dfl.all.Rect(196+SX/2-w/2, 40+SY/2-h/2, w, h);
+
+		int n = SY / 130;
+		int n0 = lbxFiles.bounds.height / 130;
+		if (n != n0) {
+			lbxFiles.bounds = dfl.all.Rect(8, 40, 182, n*130+2);
+		}		
+	}
+
+	version(rotatest) {
 	void StartRotation()
 	{
 		ang = 0; rotatesting = true;
@@ -478,12 +523,15 @@ private:
 		picBox.invalidate();
 
 	}
+	}
 
 	ImageProcessor imgProc;
 	bool[string] saved;
 	Point[2] horMarks;
 
+	version(rotatest) {
 	Timer rtimer; // for experiments 
 	int ang = 0;
 	bool rotatesting = false;
+	}
 }

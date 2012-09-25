@@ -1,6 +1,5 @@
 module jpg;
 import dfl.all, std.c.windows.windows, std.stdio;
-
 version(unittest) {	import std.traits; }
 
 extern(Windows) { 
