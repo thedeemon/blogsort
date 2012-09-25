@@ -5,7 +5,7 @@
 */
 
 import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor, std.algorithm, std.array;
-version(verbose) import std.stdio;
+version(verbose) import std.stdio, std.math;
 
 class FileItem
 {
@@ -39,7 +39,13 @@ class MainForm : dfl.form.Form
 	dfl.textbox.TextBox txtHeight;
 	dfl.listbox.ListBox lbxFiles;
 	dfl.picturebox.PictureBox picBox;
-	//~Entice Designer variables end here.	
+	dfl.label.Label label4;
+	dfl.button.Button btnTurnLeft;
+	dfl.button.Button btnTurnRight;
+	dfl.label.Label label5;
+	dfl.button.Button btnHorizonClear;
+	dfl.button.Button btnHorizonLineup;
+	//~Entice Designer variables end here.
 	
 	this()
 	{		
@@ -65,13 +71,13 @@ class MainForm : dfl.form.Form
 		btnSave = new dfl.button.Button();
 		btnSave.name = "btnSave";
 		btnSave.text = "Save";
-		btnSave.bounds = dfl.all.Rect(700, 8, 64, 24);
+		btnSave.bounds = dfl.all.Rect(428, 8, 64, 24);
 		btnSave.parent = this;
 		//~DFL dfl.button.Button=btnZoom
 		btnZoom = new dfl.button.Button();
 		btnZoom.name = "btnZoom";
 		btnZoom.text = "Zoom";
-		btnZoom.bounds = dfl.all.Rect(800, 8, 64, 24);
+		btnZoom.bounds = dfl.all.Rect(528, 8, 64, 24);
 		btnZoom.parent = this;
 		//~DFL dfl.textbox.TextBox=txtOutFile
 		txtOutFile = new dfl.textbox.TextBox();
@@ -91,42 +97,85 @@ class MainForm : dfl.form.Form
 		label2.name = "label2";
 		label2.text = "max size:";
 		label2.textAlign = dfl.all.ContentAlignment.MIDDLE_RIGHT;
-		label2.bounds = dfl.all.Rect(440, 8, 52, 23);
+		label2.bounds = dfl.all.Rect(1040, 8, 52, 23);
 		label2.parent = this;
 		//~DFL dfl.textbox.TextBox=txtWidth
 		txtWidth = new dfl.textbox.TextBox();
 		txtWidth.name = "txtWidth";
 		txtWidth.text = "1200";
-		txtWidth.bounds = dfl.all.Rect(496, 8, 48, 23);
+		txtWidth.textAlign = dfl.all.HorizontalAlignment.CENTER;
+		txtWidth.bounds = dfl.all.Rect(1096, 8, 48, 23);
 		txtWidth.parent = this;
 		//~DFL dfl.label.Label=label3
 		label3 = new dfl.label.Label();
 		label3.name = "label3";
 		label3.text = "x";
 		label3.textAlign = dfl.all.ContentAlignment.MIDDLE_CENTER;
-		label3.bounds = dfl.all.Rect(552, 8, 12, 23);
+		label3.bounds = dfl.all.Rect(1152, 8, 12, 23);
 		label3.parent = this;
 		//~DFL dfl.textbox.TextBox=txtHeight
 		txtHeight = new dfl.textbox.TextBox();
 		txtHeight.name = "txtHeight";
 		txtHeight.text = "900";
-		txtHeight.bounds = dfl.all.Rect(576, 8, 48, 23);
+		txtHeight.textAlign = dfl.all.HorizontalAlignment.CENTER;
+		txtHeight.bounds = dfl.all.Rect(1168, 8, 48, 23);
 		txtHeight.parent = this;
 		//~DFL dfl.listbox.ListBox=lbxFiles
 		lbxFiles = new dfl.listbox.ListBox();
 		lbxFiles.name = "lbxFiles";
-		lbxFiles.bounds = dfl.all.Rect(8, 40, 182, 662);
+		lbxFiles.bounds = dfl.all.Rect(8, 40, 182, 654);
 		lbxFiles.parent = this;
 		//~DFL dfl.picturebox.PictureBox=picBox
 		picBox = new dfl.picturebox.PictureBox();
 		picBox.name = "picBox";
+		picBox.sizeMode = dfl.all.PictureBoxSizeMode.STRETCH_IMAGE;
 		picBox.bounds = dfl.all.Rect(196, 40, 1100, 670);
 		picBox.parent = this;
+		//~DFL dfl.label.Label=label4
+		label4 = new dfl.label.Label();
+		label4.name = "label4";
+		label4.text = "rotate:";
+		label4.textAlign = dfl.all.ContentAlignment.MIDDLE_RIGHT;
+		label4.bounds = dfl.all.Rect(616, 8, 44, 23);
+		label4.parent = this;
+		//~DFL dfl.button.Button=btnTurnLeft
+		btnTurnLeft = new dfl.button.Button();
+		btnTurnLeft.name = "btnTurnLeft";
+		btnTurnLeft.text = "L";
+		btnTurnLeft.bounds = dfl.all.Rect(664, 8, 27, 24);
+		btnTurnLeft.parent = this;
+		//~DFL dfl.button.Button=btnTurnRight
+		btnTurnRight = new dfl.button.Button();
+		btnTurnRight.name = "btnTurnRight";
+		btnTurnRight.text = "R";
+		btnTurnRight.bounds = dfl.all.Rect(696, 8, 27, 24);
+		btnTurnRight.parent = this;
+		//~DFL dfl.label.Label=label5
+		label5 = new dfl.label.Label();
+		label5.name = "label5";
+		label5.text = "horizon:";
+		label5.textAlign = dfl.all.ContentAlignment.MIDDLE_RIGHT;
+		label5.bounds = dfl.all.Rect(744, 8, 44, 23);
+		label5.parent = this;
+		//~DFL dfl.button.Button=btnHorizonClear
+		btnHorizonClear = new dfl.button.Button();
+		btnHorizonClear.name = "btnHorizonClear";
+		btnHorizonClear.text = "Clear";
+		btnHorizonClear.bounds = dfl.all.Rect(800, 8, 48, 24);
+		btnHorizonClear.parent = this;
+		//~DFL dfl.button.Button=btnHorizonLineup
+		btnHorizonLineup = new dfl.button.Button();
+		btnHorizonLineup.name = "btnHorizonLineup";
+		btnHorizonLineup.text = "Line up";
+		btnHorizonLineup.bounds = dfl.all.Rect(856, 8, 48, 24);
+		btnHorizonLineup.parent = this;
 		//~Entice Designer 0.8.5.02 code ends here.
 
 		btnBrowse.click ~= &onBrowse;
 		btnSave.click ~= &onSave;
 		btnZoom.click ~= &onZoom;
+		btnTurnLeft.click ~= &onTurnLeft;
+		btnTurnRight.click ~= &onTurnRight;
 		picBox.sizeMode = PictureBoxSizeMode.STRETCH_IMAGE;
 		lbxFiles.drawMode = DrawMode.OWNER_DRAW_FIXED;
 		lbxFiles.drawItem ~= &drawItem;
@@ -139,11 +188,18 @@ class MainForm : dfl.form.Form
 		txtHeight.keyPress ~= &OnOutSizeChange;
 		txtWidth.lostFocus ~= &OnOutSizeChange;
 		txtHeight.lostFocus ~= &OnOutSizeChange;
-
+		picBox.mouseDown ~= &onMouseDown;
+		picBox.mouseUp ~= &onMouseUp;
+		picBox.mouseLeave ~= &onMouseUp;
+		picBox.mouseMove ~= &onMouseMove;
+		picBox.paint ~= &paintMarks;
 		closed ~= &OnClose;
+		btnHorizonClear.click ~= &clearMarks;
+		btnHorizonLineup.click ~= &lineUpHorizon;
 	}
 
-	private void onBrowse(Control sender, EventArgs ea)
+private:
+	void onBrowse(Control sender, EventArgs ea)
 	{
 		auto ofd = new OpenFileDialog;
 		ofd.title = "Open Image";
@@ -207,7 +263,7 @@ class MainForm : dfl.form.Form
 		picBox.invalidate(true);
 	}
 
-	private void onSave(Control sender, EventArgs ea)
+	void onSave(Control sender, EventArgs ea)
 	{
 		string fname = txtOutFile.text;
 		string orgname;
@@ -220,7 +276,7 @@ class MainForm : dfl.form.Form
 			msgBox("save failed, sorry");		
 	}
 
-	private void drawItem(Object sender, DrawItemEventArgs ea)
+	void drawItem(Object sender, DrawItemEventArgs ea)
 	{
 		ea.drawBackground();
 		//ea.graphics.drawIcon(f.icon, ea.bounds.x + 2, ea.bounds.y + 2);
@@ -264,11 +320,21 @@ class MainForm : dfl.form.Form
 	{
 		switch(k.keyChar()) {
 			case 'g': onSave(null, null); break;
-			case 'l': if (imgProc.TurnLeft())  showImage(imgProc.current); break;
-			case 'r': if (imgProc.TurnRight()) showImage(imgProc.current); break;
+			case 'l': onTurnLeft(null, null); break;
+			case 'r': onTurnRight(null, null); break;
 			case 'z': onZoom(null, null); break;
 			default : 
 		}		
+	}
+
+	void onTurnLeft(Control sender, EventArgs ea)
+	{
+		if (imgProc.TurnLeft())  showImage(imgProc.current);
+	}
+
+	void onTurnRight(Control sender, EventArgs ea)
+	{
+		if (imgProc.TurnRight())  showImage(imgProc.current);
 	}
 
 	void OnOutSizeChange(Control c, EventArgs k)
@@ -284,14 +350,140 @@ class MainForm : dfl.form.Form
 		} catch(ConvException ex) { }
 	}
 
-	private void onZoom(Control sender, EventArgs ea)
+	void onZoom(Control sender, EventArgs ea)
 	{
 		if (picBox.sizeMode == PictureBoxSizeMode.STRETCH_IMAGE)
 			picBox.sizeMode = PictureBoxSizeMode.CENTER_IMAGE;
 		else
 			picBox.sizeMode = PictureBoxSizeMode.STRETCH_IMAGE;
 	}
-	
+
+	void onMouseDown(Control c, MouseEventArgs ma)
+	{
+		if (ma.button != MouseButtons.RIGHT) return;		
+		setMark(ma.x, ma.y);
+	}
+
+	void onMouseUp(Control c, MouseEventArgs ma)
+	{		
+	}
+
+	void onMouseMove(Control c, MouseEventArgs ma)
+	{
+		if (ma.button != MouseButtons.RIGHT) return;		
+		setMark(ma.x, ma.y);
+	}
+
+	void paintMarks(Control c, PaintEventArgs pa)
+	{	
+		if (rotatesting) {
+			real a = (cast(real)ang) * 3.14159265 / 180;
+			int w2 = 250, h2 = 150; // /2		
+			real x = w2 * cos(a) - h2 * sin(a);
+			real y = w2 * sin(a) + h2 * cos(a);
+			int ix = cast(int)x;
+			int iy = cast(int)y;
+			int cx = 550, cy = 350;
+			real x2 = -w2 * cos(a) - h2 * sin(a);
+			real y2 = -w2 * sin(a) + h2 * cos(a);
+			int ix2 = cast(int)x2;
+			int iy2 = cast(int)y2;
+
+			scope Pen pen = new Pen(Color.fromRgb(0));
+			scope Pen red = new Pen(Color.fromRgb(0xff));
+			pa.graphics.drawLine(pen, cx + ix, cy + iy, cx + ix2, cy + iy2);
+			pa.graphics.drawLine(pen, cx + ix2, cy + iy2, cx - ix, cy - iy);
+			pa.graphics.drawLine(pen, cx - ix, cy - iy, cx - ix2, cy - iy2);
+			pa.graphics.drawLine(pen, cx - ix2, cy - iy2, cx + ix, cy + iy);
+
+			if (iy == iy2) return; // not rotated
+			Point bestpt;
+			int maxarea = 0, bx=0, by=0;
+			foreach(pt; 0..100) {
+				int px = pt * ix / 100 + (100-pt) * ix2 / 100;
+				int py = pt * iy / 100 + (100-pt) * iy2 / 100;
+				bool inside = false;
+				if (iy2 > iy && px > 0) inside = true;
+				if (iy2 < iy && px < 0) inside = true;
+				if (inside) pa.graphics.drawEllipse(red, cx+px, cy+py, 3, 3);
+				int area = py*py + px*px;
+				if (inside && area > maxarea) {
+					maxarea = area;
+					bx = px; by = py;
+				}
+			}
+			pa.graphics.drawLine(red, cx + bx, cy + by, cx - bx, cy + by);
+			pa.graphics.drawLine(red, cx - bx, cy + by, cx - bx, cy - by);
+			pa.graphics.drawLine(red, cx - bx, cy - by, cx + bx, cy - by);
+			pa.graphics.drawLine(red, cx + bx, cy - by, cx + bx, cy + by);
+
+			return;
+		}
+		scope Pen pen = new Pen(Color.fromRgb(0xff));
+		foreach(m; horMarks) 
+			if (m.x > 0 || m.y > 0) {
+				pa.graphics.drawLine(pen, m.x - 10, m.y, m.x + 10, m.y);
+				pa.graphics.drawLine(pen, m.x, m.y - 10, m.x, m.y + 10);
+			}
+	}
+
+	void setMark(int x, int y)
+	{
+		int dist(Point p) { return p.x==0 && p.y==0 ? 0 : (p.x - x)^^2 + (p.y - y)^^2; }
+		int i = 0;
+		if (dist(horMarks[1]) < dist(horMarks[0])) i = 1;
+		horMarks[i] = Point(x, y);
+		picBox.invalidate();
+	}
+
+	void clearMarks(Control sender, EventArgs ea)
+	{
+		if (rotatesting) {
+			rtimer.stop();
+			rotatesting = false;
+			return;
+		}
+
+		foreach(ref m; horMarks) {
+			m.x = 0; m.y = 0;
+		}
+		picBox.invalidate();
+	}
+
+	void lineUpHorizon(Control sender, EventArgs ea)
+	{
+		/*foreach(m; horMarks) if (m.x==0 && m.y==0) return;
+		if (horMarks[0].x == horMarks[1].x) return;
+		int i = 0;
+		if (horMarks[1].x < horMarks[0].x) i = 1;
+		int dx = horMarks[i ^ 1].x - horMarks[i].x;
+		int dy = horMarks[i ^ 1].y - horMarks[i].y;
+		double angle = std.math.atan2(cast(double)dy, cast(double)dx);
+		writeln("angle=", angle*180/3.14159265);*/
+		StartRotation();
+	}
+
+	void StartRotation()
+	{
+		ang = 0; rotatesting = true;
+		rtimer = new Timer;
+		rtimer.interval = 100;
+		rtimer.tick ~= &RotaTest;
+		rtimer.start();
+	}
+
+	void RotaTest(Timer sender, EventArgs ea)
+	{
+		ang += 5;
+		picBox.invalidate();
+
+	}
+
 	ImageProcessor imgProc;
 	bool[string] saved;
+	Point[2] horMarks;
+
+	Timer rtimer; // for experiments 
+	int ang = 0;
+	bool rotatesting = false;
 }

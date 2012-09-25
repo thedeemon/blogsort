@@ -417,6 +417,7 @@ class ImageProcessor
 {
 	static shared int maxOutX = 1200;
 	static shared int maxOutY = 900;
+	immutable NT = 4;
 
 	Bitmap GetThumb(string fname)
 	{
@@ -429,8 +430,6 @@ class ImageProcessor
 		PostJob(new shared(JGetThumb)(fname, req_no));
 		return null;
 	}
-
-	immutable NT = 4;
 
 	this(void delegate(string) gottmb)
 	{
@@ -511,22 +510,60 @@ class ImageProcessor
 		return processed[1] ? processed[1].bmp : null;
 	}
 
-	static Bitmap TurnAround(Bitmap bmp)
+	bool TurnLeft()
 	{
-		int[] src, dst;
-		int w = bmp.width, h = bmp.height;
-		src.length = w * h;	dst.length = w * h;
-		GetBitmapBits(bmp.handle, src.length*4, src.ptr);
-		foreach(y; 0..h) {
-			int di = y * w;			
-			foreach(x; 0..w)
-				dst[di + x] = src[(h-1-y)*w + w-1-x];
-		}
-		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
-		SetBitmapBits(hbm, dst.length*4, dst.ptr);
-		delete src;
-		delete dst;
-		return new Bitmap(hbm, true);
+		return Turn90(1);		
+	}
+
+	bool TurnRight()
+	{
+		return Turn90(3);
+	}
+
+	bool FineRotation(double angle)
+	{
+		if (processed[1] is null || processed[1].bmp is null) return false;
+		auto srcbmp = ReadBitmap(processed[1].fname);
+		auto turned = ApplyRotation(srcbmp, processed[1].fname);
+		int w0 = turned.width, h0 = turned.height;
+
+		return true;
+	}
+
+	static Bitmap Rotate(Bitmap srcbmp, int angle)
+	{
+		Bitmap turned;
+		switch(angle & 3) {
+			case 0: turned = srcbmp; break;
+			case 1: turned = TurnBitmap!("x*w0 + w0-1-y")( srcbmp ); break;
+			case 2: turned = TurnAround( srcbmp ); break; 
+			case 3: turned = TurnBitmap!("(h0-1-x)*w0 + y")( srcbmp ); break;
+			default:
+		}		
+		if (angle & 3) delete srcbmp;
+		return turned;
+	}
+
+
+private:
+	Bitmap ApplyRotation(Bitmap srcbmp, string fname)
+	{
+		if (fname !in rotations) return srcbmp;
+		return Rotate( srcbmp, rotations[fname] );
+	}
+
+	bool Turn90(int angle_delta)
+	{
+		if (processed[1] is null || processed[1].bmp is null) return false;
+		int angle = angle_delta;
+		if (processed[1].fname in rotations)
+			angle += rotations[processed[1].fname];
+		delete processed[1].bmp; // don't need the old one		
+		auto srcbmp = ReadBitmap(processed[1].fname);
+		rotations[processed[1].fname] = angle;
+		auto turned = ApplyRotation(srcbmp, processed[1].fname);
+		processed[1].bmp = cast(Bitmap) ResizeForBlog(turned);
+		return true;
 	}
 
 	static Bitmap TurnBitmap(alias coord_calc)(Bitmap bmp)
@@ -549,51 +586,24 @@ class ImageProcessor
 		return new Bitmap(hbm, true);
 	}
 
-	bool Turn90(int angle_delta)
+	static Bitmap TurnAround(Bitmap bmp)
 	{
-		if (processed[1] is null || processed[1].bmp is null) return false;
-		int angle = angle_delta;
-		if (processed[1].fname in rotations)
-			angle += rotations[processed[1].fname];
-		delete processed[1].bmp; // don't need the old one		
-		auto srcbmp = ReadBitmap(processed[1].fname);
-		rotations[processed[1].fname] = angle;
-		auto turned = ApplyRotation(srcbmp, processed[1].fname);
-		processed[1].bmp = cast(Bitmap) ResizeForBlog(turned);
-		return true;
+		int[] src, dst;
+		int w = bmp.width, h = bmp.height;
+		src.length = w * h;	dst.length = w * h;
+		GetBitmapBits(bmp.handle, src.length*4, src.ptr);
+		foreach(y; 0..h) {
+			int di = y * w;			
+			foreach(x; 0..w)
+				dst[di + x] = src[(h-1-y)*w + w-1-x];
+		}
+		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
+		SetBitmapBits(hbm, dst.length*4, dst.ptr);
+		delete src;
+		delete dst;
+		return new Bitmap(hbm, true);
 	}
 
-	bool TurnLeft()
-	{
-		return Turn90(1);		
-	}
-
-	bool TurnRight()
-	{
-		return Turn90(3);
-	}
-
-	static Bitmap Rotate(Bitmap srcbmp, int angle)
-	{
-		Bitmap turned;
-		switch(angle & 3) {
-			case 0: turned = srcbmp; break;
-			case 1: turned = TurnBitmap!("x*w0 + w0-1-y")( srcbmp ); break;
-			case 2: turned = TurnAround( srcbmp ); break; 
-			case 3: turned = TurnBitmap!("(h0-1-x)*w0 + y")( srcbmp ); break;
-			default:
-		}		
-		if (angle & 3) delete srcbmp;
-		return turned;
-	}
-
-	Bitmap ApplyRotation(Bitmap srcbmp, string fname)
-	{
-		if (fname !in rotations) return srcbmp;
-		return Rotate( srcbmp, rotations[fname] );
-	}
-
-private:
 	void onTimer(Timer sender, EventArgs ea)
 	{
 		while(receiveTimeout(dur!"msecs"(0), &gotThumb, &linkDied, &gotResized)) {}
