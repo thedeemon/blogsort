@@ -39,17 +39,6 @@ class CachedPicture : CachedImage
 	void dispose() shared { if (pic) { auto p = cast(Picture) pic; p.dispose(); } }
 }
 
-void AddToCache(T)(ref T[string] cache, string name, T val, int maxsize)
-{
-	cache[name] = val;
-	if (cache.length > maxsize) {
-		auto tbs = cache.byKey().map!(name => tuple(name, cache[name]));
-		auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
-		mp.front[1].dispose();
-		cache.remove(mp.front[0]);
-	}
-}
-
 // messages
 struct HaveWork { } 
 struct Exit {}
