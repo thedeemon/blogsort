@@ -151,7 +151,7 @@ class PictureCache
 	CachedPicture[string] pic_cache;
 	bool[string] loading_pics;
 	int pic_req_no = 0;
-	immutable maxPics = 5;
+	immutable maxPics = 7;
 
 	Picture Get(string fname) shared
 	{
@@ -273,10 +273,10 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 	version(verbose) auto tt0 = core.time.TickDuration.currSystemTick;
 	ubyte[] data;
 	data.length = w * h * 4;
-	double[3][] row;
+	int[3][] row;
 	row.length = w;
 	real h0h = cast(real) h0 / h, w0w = cast(real) w0 / w, t0, t1;
-	double[] sh0, sh1;
+	int[] sh0, sh1;
 	int[] aisx0, aisx1;
 	aisx0.length = w; aisx1.length = w; sh0.length = w; sh1.length = w;
 	immutable eps = 1.0 / 256;
@@ -284,11 +284,11 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 		real sx0 = x * w0w, sx1 = (x+1) * w0w;
 		aisx0[x] = cast(int) sx0;
 		aisx1[x] = cast(int) sx1;
-		sh0[x] = (1.0 - std.math.modf(sx0, t0)) / w0w;
-		sh1[x] = std.math.modf(sx1, t1) / w0w;
+		sh0[x] = cast(int) ((1.0 - std.math.modf(sx0, t0)) / w0w * 256);
+		sh1[x] = cast(int) (std.math.modf(sx1, t1) / w0w * 256);
 	}
 	aisx1[$-1] = aisx0[$-1];
-	double kx = 1 / w0w, ky = 1 / h0h;
+	int kx = cast(int)(256 / w0w), ky = cast(int) (256 / h0h);
 	
 	foreach(y; 0..h) {		
 		/*int sy = y * h0 / h;	//nearest neighbor
@@ -301,17 +301,17 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 		real sy0 = h0h * y, sy1 = h0h * (y+1);
 		int isy0 = cast(int) sy0;
 		int isy1 = cast(int) sy1;
-		double ysh0 = (1.0 - std.math.modf(sy0, t0)) / h0h;
-		double ysh1 = std.math.modf(sy1, t1) / h0h;
+		int ysh0 = cast(int) ((1.0 - std.math.modf(sy0, t0)) / h0h * 256);
+		int ysh1 = cast(int) (std.math.modf(sy1, t1) / h0h * 256);
 		if (y==h-1) isy1 = isy0;
 
-		void addRow(int rsi, double rk) {
+		void addRow(int rsi, int rk) {
 			foreach(x; 0..w) {
 				int si = rsi + aisx0[x] * 4;
 				if (aisx1[x] > aisx0[x]) { // several pixels
-					double r = org[si] * sh0[x];
-					double g = org[si+1] * sh0[x];
-					double b = org[si+2] * sh0[x];
+					int r = org[si] * sh0[x];
+					int g = org[si+1] * sh0[x];
+					int b = org[si+2] * sh0[x];
 					int sx = aisx0[x] + 1;
 					while(sx < aisx1[x]) {
 						si += 4;
@@ -347,13 +347,13 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 			rsi += w0 * 4;
 			addRow(rsi, ysh1);
 		} else { //one pixel row
-			addRow(rsi, 1.0);
+			addRow(rsi, 256);
 		}
 		int di = y * w * 4;
 		foreach(x; 0..w) {
-			data[di] = cast(ubyte) row[x][0];
-			data[di+1] = cast(ubyte) row[x][1];
-			data[di+2] = cast(ubyte) row[x][2];
+			data[di] = cast(ubyte) (row[x][0] >> 16);
+			data[di+1] = cast(ubyte) (row[x][1] >> 16);
+			data[di+2] = cast(ubyte) (row[x][2] >> 16);
 			di += 4;
 		}
 
@@ -537,7 +537,11 @@ class ImageProcessor
 	bool SaveCurrent(string fname, out string orgname)
 	{
 		if (processed[1] is null) return false;
-		jpgWriter.Write(processed[1].bmp, fname);
+		try {
+			jpgWriter.Write(processed[1].bmp, fname);
+		} catch(Exception ex) { //cannot create file 
+			return false;
+		}
 		orgname = processed[1].fname;
 		return true;
 	}
@@ -711,7 +715,14 @@ private:
 
 	void gotThumb(ThumbCreated tb)
 	{
-		AddToCache(thumb_cache, tb.fname, new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req), max_thumbs);
+		//AddToCache(thumb_cache, tb.fname, new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req), max_thumbs);
+		thumb_cache[tb.fname] = new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req);
+		if (thumb_cache.length > max_thumbs) {
+			auto tbs = thumb_cache.byKey().map!(name => tuple(name, thumb_cache[name]));
+			auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
+			mp.front[1].dispose();
+			thumb_cache.remove(mp.front[0]);
+		}
 		if (on_gotthumb !is null) on_gotthumb(tb.fname);
 	}
 

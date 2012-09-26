@@ -3,7 +3,7 @@
 	Entice Designer written by Christopher E. Miller
 	www.dprogramming.com/entice.php
 */
-
+module bsform;
 import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor, std.algorithm, std.array;
 version(verbose) import std.stdio;
 version(rotatest) import std.math;
@@ -201,12 +201,12 @@ class MainForm : dfl.form.Form
 		this.resize ~= &OnResize;
 
 		toolTip = new ToolTip;
-		toolTip.setToolTip(btnSave, "Save current image (key: g)");
-		toolTip.setToolTip(btnTurnLeft, "Turn 90° left (key: l)");
-		toolTip.setToolTip(btnTurnRight, "Turn 90° right (key: r)");
+		toolTip.setToolTip(btnSave, "Save current image (G)");
+		toolTip.setToolTip(btnTurnLeft, "Turn 90° left (L)");
+		toolTip.setToolTip(btnTurnRight, "Turn 90° right (R)");
 		toolTip.setToolTip(btnHorizonClear, "Clear the horizon marks");
 		toolTip.setToolTip(btnHorizonLineup, "Rotate the image to make marks on one horizontal line");
-		toolTip.setToolTip(btnZoom, "Switch between 100% fit and 1:1 scales (key: z)");
+		toolTip.setToolTip(btnZoom, "Switch between 100% fit and 1:1 scales (Z)");
 	}
 
 private:
@@ -256,9 +256,10 @@ private:
 		string nextFile = next ? next.fullname : null;
 		showImage( imgProc.FileSelected(prevFile, it.fullname, nextFile) );
 		int top = lbxFiles.topIndex;
+		int vn = lbxFiles.bounds.height / 130;
 		if (i > 0 && i == top) lbxFiles.topIndex = top - 1;
 		else
-		if (i >= top + 4 && top + 5 < n) lbxFiles.topIndex = top + 1;
+		if (i >= top + vn-1 && top + vn < n) lbxFiles.topIndex = top + 1;
 	}
 
 	void showImage(Image img)
@@ -328,11 +329,12 @@ private:
 
 	void onGotThumb(string fname)
 	{
+		int vn = lbxFiles.bounds.height / 130;
 		foreach(i; 0..lbxFiles.items.length) {
 			auto it = cast(FileItem) lbxFiles.items[i];
 			if (it.fullname == fname) {
 				int di = i - lbxFiles.topIndex;
-				if (di >= 0 && di < 6)
+				if (di >= 0 && di < vn)
 					lbxFiles.invalidate(true);
 				return;
 			}
