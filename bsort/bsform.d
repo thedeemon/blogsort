@@ -183,9 +183,6 @@ class MainForm : dfl.form.Form
 		lbxFiles.itemHeight = 130;
 		lbxFiles.sorted = false;
 		lbxFiles.selectedValueChanged ~= &OnSelChanged;
-		lbxFiles.keyPress ~= &OnKey;
-		this.keyPress ~= &OnKey;
-		picBox.keyPress ~= &OnKey;
 		txtWidth.keyPress ~= &OnOutSizeChange;
 		txtHeight.keyPress ~= &OnOutSizeChange;
 		txtWidth.lostFocus ~= &OnOutSizeChange;
@@ -200,13 +197,28 @@ class MainForm : dfl.form.Form
 		btnHorizonLineup.click ~= &lineUpHorizon;
 		this.resize ~= &OnResize;
 
+		/*lbxFiles.keyPress ~= &OnKey;
+		this.keyPress ~= &OnKey;
+		picBox.keyPress ~= &OnKey;*/
+		Control[] cs = [lbxFiles, this, picBox, btnHorizonClear, btnHorizonLineup, btnSave, btnZoom, btnBrowse];
+		foreach(c; cs) c.keyPress ~= &OnKey;
+
 		toolTip = new ToolTip;
 		toolTip.setToolTip(btnSave, "Save current image (G)");
 		toolTip.setToolTip(btnTurnLeft, "Turn 90° left (L)");
 		toolTip.setToolTip(btnTurnRight, "Turn 90° right (R)");
 		toolTip.setToolTip(btnHorizonClear, "Clear the horizon marks");
-		toolTip.setToolTip(btnHorizonLineup, "Rotate the image to make marks on one horizontal line");
+		toolTip.setToolTip(btnHorizonLineup, "Rotate the image to make marks on one horizontal line (H)");
 		toolTip.setToolTip(btnZoom, "Switch between 100% fit and 1:1 scales (Z)");
+
+		try {
+			subkey = Registry.currentUser.createSubKey("Software\\blogsort");
+			auto path = cast(RegistryValueSz) subkey.getValue("path", new RegistryValueSz("c:\\zhzm\\"));
+			txtOutFile.text = path.value ~ "pic01.jpg";
+		} catch(Exception ex) {
+			version(verbose) writeln("registry error: ", ex);
+		}
+
 	}
 
 private:
@@ -284,6 +296,7 @@ private:
 	void onSave(Control sender, EventArgs ea)
 	{
 		string fname = txtOutFile.text, orgname;
+		if (imgProc.current is null) return; // nothing to save		
 		if (fname.exists) {
 			if (msgBox("File " ~ fname ~ " exists. Overwrite?", "Warning", MsgBoxButtons.YES_NO, MsgBoxIcon.WARNING)==DialogResult.NO) {
 				while(fname.exists) 
@@ -325,6 +338,10 @@ private:
 	void OnClose(Form f, EventArgs ea)
 	{
 		imgProc.Stop();
+		auto bs = txtOutFile.text.lastIndexOf('\\');
+		if (bs < 0 || subkey is null) return;
+		subkey.setValue("path", new RegistryValueSz(txtOutFile.text[0..bs+1]));
+		subkey.close();
 	}
 
 	void onGotThumb(string fname)
@@ -348,6 +365,7 @@ private:
 			case 'l': onTurnLeft(null, null); break;
 			case 'r': onTurnRight(null, null); break;
 			case 'z': onZoom(null, null); break;
+			case 'h': lineUpHorizon(null, null); break;
 			default : 
 		}		
 	}
@@ -539,6 +557,7 @@ private:
 	bool[string] saved;
 	Point[2] horMarks;
 	ToolTip toolTip;
+	RegistryKey subkey;
 
 	version(rotatest) {
 	Timer rtimer; // for experiments 
