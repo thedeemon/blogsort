@@ -247,6 +247,7 @@ private:
 				FileItem it = cast(FileItem)lbxFiles.items[idx];
 				if (it.fullname == ofd.fileName) {
 					lbxFiles.selectedIndex = idx;
+					this.text = "blogsort " ~ it.name;
 					break;
 				}
 			}
@@ -265,6 +266,7 @@ private:
 		string prevFile = prev ? prev.fullname : null;
 		string nextFile = next ? next.fullname : null;
 		ShowImage( imgProc.FileSelected(prevFile, it.fullname, nextFile) );
+		this.text = "blogsort " ~ it.name;
 		int top = lbxFiles.topIndex;
 		int vn = lbxFiles.bounds.height / 130;
 		if (i > 0 && i == top) lbxFiles.topIndex = top - 1;
