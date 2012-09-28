@@ -1,6 +1,7 @@
 module bsform;
 import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor, std.algorithm, std.array;
 version(verbose) import std.stdio;
+import std.math;
 
 class FileItem
 {
@@ -40,11 +41,12 @@ class MainForm : dfl.form.Form
 	dfl.label.Label label5;
 	dfl.button.Button btnHorizonClear;
 	dfl.button.Button btnHorizonLineup;
+	dfl.button.Button btnCrop;
 	//~Entice Designer variables end here.
 	
 	this()
 	{		
-		imgProc = new ImageProcessor(&onGotThumb);
+		imgProc = new ImageProcessor(&OnGotThumb);
 		initializeMyForm();				
 	}	
 	
@@ -163,16 +165,22 @@ class MainForm : dfl.form.Form
 		btnHorizonLineup.text = "Line up";
 		btnHorizonLineup.bounds = dfl.all.Rect(856, 8, 48, 24);
 		btnHorizonLineup.parent = this;
+		//~DFL dfl.button.Button=btnCrop
+		btnCrop = new dfl.button.Button();
+		btnCrop.name = "btnCrop";
+		btnCrop.text = "Crop";
+		btnCrop.bounds = dfl.all.Rect(920, 8, 48, 24);
+		btnCrop.parent = this;
 		//~Entice Designer 0.8.5.02 code ends here.
 
-		btnBrowse.click ~= &onBrowse;
-		btnSave.click ~= &onSave;
-		btnZoom.click ~= &onZoom;
-		btnTurnLeft.click ~= &onTurnLeft;
-		btnTurnRight.click ~= &onTurnRight;
+		btnBrowse.click ~= &OnBrowse;
+		btnSave.click ~= &OnSave;
+		btnZoom.click ~= &OnZoom;
+		btnTurnLeft.click ~= &OnTurnLeft;
+		btnTurnRight.click ~= &OnTurnRight;
 		picBox.sizeMode = PictureBoxSizeMode.STRETCH_IMAGE;
 		lbxFiles.drawMode = DrawMode.OWNER_DRAW_FIXED;
-		lbxFiles.drawItem ~= &drawItem;
+		lbxFiles.drawItem ~= &DrawItem;
 		lbxFiles.itemHeight = 130;
 		lbxFiles.sorted = false;
 		lbxFiles.selectedValueChanged ~= &OnSelChanged;
@@ -180,12 +188,13 @@ class MainForm : dfl.form.Form
 		txtHeight.keyPress ~= &OnOutSizeChange;
 		txtWidth.lostFocus ~= &OnOutSizeChange;
 		txtHeight.lostFocus ~= &OnOutSizeChange;
-		picBox.mouseDown ~= &onMouseDown;
-		picBox.mouseMove ~= &onMouseMove;
-		picBox.paint ~= &paintMarks;
+		picBox.mouseDown ~= &OnMouseDown;
+		picBox.mouseMove ~= &OnMouseMove;
+		picBox.paint ~= &PaintMarks;
 		this.closed ~= &OnClose;
-		btnHorizonClear.click ~= &clearMarks;
-		btnHorizonLineup.click ~= &lineUpHorizon;
+		btnHorizonClear.click ~= &OnClearMarks;
+		btnHorizonLineup.click ~= &LineUpHorizon;
+		btnCrop.click ~= &OnCrop;
 		this.resize ~= &OnResize;
 
 		Control[] cs = [lbxFiles, this, picBox, btnHorizonClear, btnHorizonLineup, btnSave, btnZoom, btnBrowse];
@@ -195,9 +204,10 @@ class MainForm : dfl.form.Form
 		toolTip.setToolTip(btnSave, "Save current image (G)");
 		toolTip.setToolTip(btnTurnLeft, "Turn 90° left (L)");
 		toolTip.setToolTip(btnTurnRight, "Turn 90° right (R)");
-		toolTip.setToolTip(btnHorizonClear, "Clear the horizon marks");
+		toolTip.setToolTip(btnHorizonClear, "Clear marks (ESC)");
 		toolTip.setToolTip(btnHorizonLineup, "Rotate the image to make marks on one horizontal line (H)");
 		toolTip.setToolTip(btnZoom, "Switch between 100% fit and 1:1 scales (Z)");
+		toolTip.setToolTip(btnCrop, "Crop (C)");
 
 		try {
 			subkey = Registry.currentUser.createSubKey("Software\\blogsort");
@@ -206,11 +216,11 @@ class MainForm : dfl.form.Form
 		} catch(Exception ex) {
 			version(verbose) writeln("registry error: ", ex);
 		}
-
+		ClearMarks();
 	}
 
 private:
-	void onBrowse(Control sender, EventArgs ea)
+	void OnBrowse(Control sender, EventArgs ea)
 	{
 		auto ofd = new OpenFileDialog;
 		ofd.title = "Open Image";
@@ -240,7 +250,7 @@ private:
 					break;
 				}
 			}
-			showImage( imgProc.FileSelected(prevFile, ofd.fileName, nextFile) );
+			ShowImage( imgProc.FileSelected(prevFile, ofd.fileName, nextFile) );
 		}
 	}
 
@@ -254,7 +264,7 @@ private:
 		auto next = i < n - 1 ? cast(FileItem) lbxFiles.items[i+1] : null;
 		string prevFile = prev ? prev.fullname : null;
 		string nextFile = next ? next.fullname : null;
-		showImage( imgProc.FileSelected(prevFile, it.fullname, nextFile) );
+		ShowImage( imgProc.FileSelected(prevFile, it.fullname, nextFile) );
 		int top = lbxFiles.topIndex;
 		int vn = lbxFiles.bounds.height / 130;
 		if (i > 0 && i == top) lbxFiles.topIndex = top - 1;
@@ -262,7 +272,7 @@ private:
 		if (i >= top + vn-1 && top + vn < n) lbxFiles.topIndex = top + 1;
 	}
 
-	void showImage(Image img)
+	void ShowImage(Image img)
 	{
 		if (img is null) {
 			picBox.image = null;
@@ -275,13 +285,13 @@ private:
 		picBox.invalidate(true);
 	}
 
-	string nextName(string fname)
+	string nextName(string fname) pure
 	{
 		auto dot = fname.lastIndexOf('.');
 		return succ(fname[0..dot]) ~ ".jpg";
 	}
 
-	void onSave(Control sender, EventArgs ea)
+	void OnSave(Control sender, EventArgs ea)
 	{
 		string fname = txtOutFile.text, orgname;
 		if (imgProc.current is null) return; // nothing to save		
@@ -301,7 +311,7 @@ private:
 			msgBox("save failed, sorry");		
 	}
 
-	void drawItem(Object sender, DrawItemEventArgs ea)
+	void DrawItem(Object sender, DrawItemEventArgs ea)
 	{
 		ea.drawBackground();
 
@@ -331,7 +341,7 @@ private:
 		subkey.close();
 	}
 
-	void onGotThumb(string fname)
+	void OnGotThumb(string fname)
 	{
 		int vn = lbxFiles.bounds.height / 130;
 		foreach(i; 0..lbxFiles.items.length) {
@@ -348,23 +358,25 @@ private:
 	void OnKey(Control c, KeyPressEventArgs k)
 	{
 		switch(k.keyChar()) {
-			case 'g': onSave(null, null); break;
-			case 'l': onTurnLeft(null, null); break;
-			case 'r': onTurnRight(null, null); break;
-			case 'z': onZoom(null, null); break;
-			case 'h': lineUpHorizon(null, null); break;
+			case 'g': OnSave(null, null); break;
+			case 'l': OnTurnLeft(null, null); break;
+			case 'r': OnTurnRight(null, null); break;
+			case 'z': OnZoom(null, null); break;
+			case 'h': LineUpHorizon(null, null); break;
+			case 'c': OnCrop(null, null); break;
 			default : 
 		}		
+		if (k.keyCode == Keys.ESCAPE) OnClearMarks(null, null);
 	}
 
-	void onTurnLeft(Control sender, EventArgs ea)
+	void OnTurnLeft(Control sender, EventArgs ea)
 	{
-		if (imgProc.TurnLeft())  showImage(imgProc.current);
+		if (imgProc.TurnLeft())  ShowImage(imgProc.current);
 	}
 
-	void onTurnRight(Control sender, EventArgs ea)
+	void OnTurnRight(Control sender, EventArgs ea)
 	{
-		if (imgProc.TurnRight())  showImage(imgProc.current);
+		if (imgProc.TurnRight())  ShowImage(imgProc.current);
 	}
 
 	void OnOutSizeChange(Control c, EventArgs k)
@@ -380,7 +392,7 @@ private:
 		} catch(ConvException ex) { }
 	}
 
-	void onZoom(Control sender, EventArgs ea)
+	void OnZoom(Control sender, EventArgs ea)
 	{
 		if (picBox.sizeMode == PictureBoxSizeMode.STRETCH_IMAGE)
 			picBox.sizeMode = PictureBoxSizeMode.CENTER_IMAGE;
@@ -388,19 +400,21 @@ private:
 			picBox.sizeMode = PictureBoxSizeMode.STRETCH_IMAGE;
 	}
 
-	void onMouseDown(Control c, MouseEventArgs ma)
+	void OnMouseDown(Control c, MouseEventArgs ma)
 	{
-		if (ma.button != MouseButtons.RIGHT) return;		
-		setMark(ma.x, ma.y);
+		switch(ma.button) {
+			case MouseButtons.RIGHT: setMark(ma.x, ma.y); break;
+			case MouseButtons.LEFT: setCropMark(ma.x, ma.y); break;
+			default:
+		}
 	}
 
-	void onMouseMove(Control c, MouseEventArgs ma)
+	void OnMouseMove(Control c, MouseEventArgs ma)
 	{
-		if (ma.button != MouseButtons.RIGHT) return;		
-		setMark(ma.x, ma.y);
+		OnMouseDown(c, ma);
 	}
 
-	void paintMarks(Control c, PaintEventArgs pa)
+	void PaintMarks(Control c, PaintEventArgs pa)
 	{			
 		scope pen = new Pen(Color.fromRgb(0xff));
 		foreach(m; horMarks) 
@@ -408,24 +422,57 @@ private:
 				pa.graphics.drawLine(pen, m.x - 10, m.y, m.x + 10, m.y);
 				pa.graphics.drawLine(pen, m.x, m.y - 10, m.x, m.y + 10);
 			}
+		scope yellow = new Pen(Color.fromRgb(0xFFFF));
+		if (cropMarks[0].x > cropMarks[1].x) {
+			auto m = cropMarks[0];
+			cropMarks[0] = cropMarks[1];
+			cropMarks[1] = m;
+		}
+		if (cropMarks[1].x < 0) return;
+		if (cropMarks[0].x >= 0 && cropMarks[1].x >= 0) {
+			Vec dv = cropMarks[0] - cropMarks[1];
+			pa.graphics.drawRectangle(yellow, min(cropMarks[0].x, cropMarks[1].x), min(cropMarks[0].y, cropMarks[1].y),
+									  abs(dv.x), abs(dv.y));
+
+		} else { // only one mark present
+			auto m = cropMarks[1];
+			pa.graphics.drawLine(yellow, m.x - 10, m.y, m.x + 10, m.y);
+			pa.graphics.drawLine(yellow, m.x, m.y - 10, m.x, m.y + 10);
+		}
 	}
 
 	void setMark(int x, int y)
 	{
-		int dist(Point p) { return p.x==0 && p.y==0 ? 0 : (p.x - x)^^2 + (p.y - y)^^2; }
+		int dist(Vec p) { return p.x==0 && p.y==0 ? 0 : (p.x - x)^^2 + (p.y - y)^^2; }
 		int i = 0;
 		if (dist(horMarks[1]) < dist(horMarks[0])) i = 1;
-		horMarks[i] = Point(x, y);
+		horMarks[i] = Vec(x, y);
 		picBox.invalidate();
 	}
 
-	void clearMarks(Control sender, EventArgs ea)
+	void setCropMark(int x, int y)
 	{
-		foreach(ref m; horMarks) {	m.x = 0; m.y = 0;	}
+		int dist(Vec p) { return p.x < 0 ? 0 : (p.x - x)^^2 + (p.y - y)^^2; }
+		int i = 0;
+		if (dist(cropMarks[1]) < dist(cropMarks[0])) i = 1;
+		cropMarks[i] = Vec(x, y);
 		picBox.invalidate();
 	}
 
-	void lineUpHorizon(Control sender, EventArgs ea)
+
+	void OnClearMarks(Control sender, EventArgs ea)
+	{
+		ClearMarks();
+		picBox.invalidate();
+	}
+
+	void ClearMarks()
+	{
+		foreach(ref m; horMarks) { m.x = 0; m.y = 0; }
+		foreach(ref m; cropMarks) { m.x = -1; m.y = -1; }
+	}
+
+	void LineUpHorizon(Control sender, EventArgs ea)
 	{
 		foreach(m; horMarks) if (m.x==0 && m.y==0) return;
 		if (horMarks[0].x == horMarks[1].x || horMarks[0].y == horMarks[1].y) return;
@@ -437,10 +484,34 @@ private:
 		version(verbose) writeln("angle=", angle*180/3.14159265);
 		else {
 			if (imgProc.FineRotation(angle)) { 
-				foreach(ref m; horMarks) { m.x = 0; m.y = 0; }
-				showImage(imgProc.current);
+				ClearMarks();
+				ShowImage(imgProc.current);
 			}
 		}
+	}
+
+	void OnCrop(Control sender, EventArgs ea)
+	{
+		if (picBox.image is null) return;
+		foreach(m; cropMarks) if (m.x < 0) return;
+		int x0 = min(cropMarks[0].x, cropMarks[1].x);
+		int y0 = min(cropMarks[0].y, cropMarks[1].y);
+		int x1 = max(cropMarks[0].x, cropMarks[1].x);
+		int y1 = max(cropMarks[0].y, cropMarks[1].y);
+		int w = picBox.image.width, h = picBox.image.height, ix0, iy0, ix1, iy1;		
+		if (picBox.sizeMode == PictureBoxSizeMode.STRETCH_IMAGE) { //fit
+			ix0 = x0 * w / picBox.bounds.width;
+			iy0 = y0 * h / picBox.bounds.height;
+			ix1 = x1 * w / picBox.bounds.width;
+			iy1 = y1 * h / picBox.bounds.height;
+		} else { //1:1
+			ix0 = w/2 - (picBox.bounds.width/2 - x0);
+			iy0 = h/2 - (picBox.bounds.height/2 - y0);
+			ix1 = w/2 - (picBox.bounds.width/2 - x1);
+			iy1 = h/2 - (picBox.bounds.height/2 - y1);
+		}
+		ClearMarks();
+		ShowImage( imgProc.CropCurrent(ix0, iy0, ix1, iy1) );
 	}
 
 	void OnResize(Control,EventArgs)
@@ -461,7 +532,8 @@ private:
 
 	ImageProcessor imgProc;
 	bool[string] saved;
-	Point[2] horMarks;
+	Vec[2] horMarks;
 	ToolTip toolTip;
 	RegistryKey subkey;
+	Vec[2] cropMarks;
 }

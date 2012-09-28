@@ -363,14 +363,14 @@ class Worker
 		iptid = improcTid;
 	}
 
-	void run()
+	void Run()
 	{
 		bool done = false;
 		while(!done) 
-			receive(&work, (Exit e) { done = true; }, (OwnerTerminated ot) { done = true;} );		
+			receive(&Work, (Exit e) { done = true; }, (OwnerTerminated ot) { done = true;} );		
 	}
 
-	void work(HaveWork msg)
+	private void Work(HaveWork msg)
 	{
 		auto job = LabourDept.dept.GetJob();
 		if (job is null) return;
@@ -402,10 +402,10 @@ private:
 	Tid iptid;
 }
 
-void startWorker(Tid iptid)
+void StartWorker(Tid iptid)
 {
 	auto w = new Worker(iptid); 
-	w.run();
+	w.Run();
 }
 
 struct Vec 
@@ -452,7 +452,7 @@ class ImageProcessor
 
 	this(void delegate(string) gottmb)
 	{
-		on_gotthumb = gottmb;
+		onGotThumb = gottmb;
 		jpgWriter = new JpegWriter;
 	}
 
@@ -462,12 +462,12 @@ class ImageProcessor
 		LabourDept.dept = new shared(LabourDept);
 		picCache = new shared(PictureCache);
 		foreach(i; 0..NT) {
-			Tid tid = spawnLinked(&startWorker, thisTid);
+			Tid tid = spawnLinked(&StartWorker, thisTid);
 			workers ~= tid;
 		}		
 		timer = new Timer;
 		timer.interval = 100;
-		timer.tick ~= &onTimer;
+		timer.tick ~= &OnTimer;
 		timer.start();
 	}
 
@@ -483,7 +483,7 @@ class ImageProcessor
 		foreach(w; workers)
 			w.send(Exit());
 		while(terminated.length < workers.length)
-			receive(&gotThumb, &linkDied);
+			receive(&GotThumb, &LinkDied);
 	}
 
 	Image FileSelected(string prevFile, string curFile, string nextFile)
@@ -578,6 +578,27 @@ class ImageProcessor
 		return turned;
 	}
 
+	Bitmap CropCurrent(int x0, int y0, int x1, int y1)
+	{
+		if (processed[1] is null || processed[1].bmp is null) return null;
+		int w = x1 - x0, h = y1 - y0;
+		int w0 = processed[1].bmp.width, h0 = processed[1].bmp.height;
+		int[] src, dst;
+		src.length = w0 * h0;
+		dst.length = w * h;
+		GetBitmapBits(processed[1].bmp.handle, src.length*4, src.ptr);
+		foreach(y; 0..h) {
+			int si = (y + y0) * w0 + x0;
+			int di = y * w;
+			dst[di..di+w] = src[si..si+w];			
+		}
+		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
+		SetBitmapBits(hbm, dst.length*4, dst.ptr);
+		auto bmp = new Bitmap(hbm, true);
+		delete processed[1].bmp;
+		processed[1].bmp = bmp;
+		return bmp;
+	}
 
 private:
 	Bitmap ApplyRotation(Bitmap srcbmp, string fname)
@@ -697,14 +718,13 @@ private:
 		return new Bitmap(hbm, true);
 	}
 
-	void onTimer(Timer sender, EventArgs ea)
+	void OnTimer(Timer sender, EventArgs ea)
 	{
-		while(receiveTimeout(dur!"msecs"(0), &gotThumb, &linkDied, &gotResized)) {}
+		while(receiveTimeout(dur!"msecs"(0), &GotThumb, &LinkDied, &GotResized)) {}
 	}
 
-	void gotThumb(ThumbCreated tb)
-	{
-		//AddToCache(thumb_cache, tb.fname, new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req), max_thumbs);
+	void GotThumb(ThumbCreated tb)
+	{		
 		thumb_cache[tb.fname] = new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req);
 		if (thumb_cache.length > max_thumbs) {
 			auto tbs = thumb_cache.byKey().map!(name => tuple(name, thumb_cache[name]));
@@ -712,15 +732,15 @@ private:
 			mp.front[1].dispose();
 			thumb_cache.remove(mp.front[0]);
 		}
-		if (on_gotthumb !is null) on_gotthumb(tb.fname);
+		if (onGotThumb !is null) onGotThumb(tb.fname);
 	}
 
-	void linkDied(LinkTerminated lt) 
+	void LinkDied(LinkTerminated lt) 
 	{ 
 		terminated[lt.tid] = true; 
 	}
 
-	void gotResized(Prepared p)
+	void GotResized(Prepared p)
 	{
 		foreach(i; [0,2]) {
 			if (requested[i] == p.fname) {
@@ -736,7 +756,7 @@ private:
 	immutable max_thumbs = 100;
 	Tid[] workers;
 	Timer timer;
-	void delegate(string) on_gotthumb;
+	void delegate(string) onGotThumb;
 	bool[Tid] terminated;
 	Pic[3] processed;
 	string[3] requested;
