@@ -16,12 +16,19 @@ class CachedImage
 class Pic : CachedImage
 {
 	Bitmap bmp;
+	double[] cropped;
 
 	this(string filename, Bitmap bitmap, int req = 0)
 	{
 		super(req, filename);  bmp = bitmap; 
 	}
 
+	void ReplaceBmp(Bitmap b)
+	{
+		if (bmp) delete bmp;
+		bmp = b;
+		cropped = [];
+	}
 	void dispose() { if (bmp) delete bmp; }
 	void dispose() shared { if (bmp) delete bmp; }
 }
@@ -173,8 +180,7 @@ class PictureCache
 	synchronized void Loaded(string name, Picture pic) 
 	{
 		loading_pics.remove(name);
-		pic_req_no++;		
-		//AddToCache!(shared(CachedPicture))(pic_cache, name, new shared(CachedPicture)(name, pic, pic_req_no), 5);
+		pic_req_no++;				
 		pic_cache[name] = new shared(CachedPicture)(name, pic, pic_req_no);
 		if (pic_cache.length > maxPics) {
 			auto tbs = pic_cache.byKey().map!(name => tuple(name, pic_cache[name]));
@@ -402,26 +408,20 @@ private:
 	Tid iptid;
 }
 
-void StartWorker(Tid iptid)
-{
-	auto w = new Worker(iptid); 
-	w.Run();
-}
-
 struct Vec 
 {
 	int x, y;
 
-	this(int X, int Y) { x = X; y = Y; }
+	this(int X, int Y) pure { x = X; y = Y; }
 	this(Point p) { x = p.x; y = p.y; }
 	this(Size sz) { x = sz.width; y = sz.height; }
 
-	Vec opSub(Vec v) { return Vec(x - v.x, y - v.y); }
-	Vec opAdd(Vec v) { return Vec(x + v.x, y + v.y); }
-	int mul(Vec v) { return x * v.y - y * v.x; }
+	Vec opSub(Vec v) pure { return Vec(x - v.x, y - v.y); }
+	Vec opAdd(Vec v) pure { return Vec(x + v.x, y + v.y); }
+	int mul(Vec v) pure { return x * v.y - y * v.x; }
 }
 
-bool insideRect(Vec p, ref Vec[4] ps)
+bool insideRect(Vec p, ref Vec[4] ps) pure
 {
 	int[4] s; //signs
 	foreach(i; 0..4) {
@@ -461,8 +461,9 @@ class ImageProcessor
 		if (workers.length > 0) return;
 		LabourDept.dept = new shared(LabourDept);
 		picCache = new shared(PictureCache);
-		foreach(i; 0..NT) {
-			Tid tid = spawnLinked(&StartWorker, thisTid);
+		auto strt = (Tid iptid) { with(new Worker(iptid)) Run(); };			
+		foreach(i; 0..NT) {			
+			Tid tid = spawnLinked(strt, thisTid);
 			workers ~= tid;
 		}		
 		timer = new Timer;
@@ -509,16 +510,9 @@ class ImageProcessor
 		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile, rot(nextFile), frot(nextFile)));
 		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile, rot(prevFile), frot(prevFile)));
 		if (processed[1] is null) {	//prepare now
-			auto srcbmp = ReadBitmap(curFile);
-			auto turned = ApplyRotation(srcbmp, curFile);
-			if (curFile in fine_rotations) {
-				auto rotated = FineRotate(turned, fine_rotations[curFile]);
-				delete turned;
-				turned = rotated;
-			}
+			auto turned = Prepare(curFile);
 			auto bmp = ResizeForBlog( turned );
-			processed[1] = new Pic(curFile, cast(Bitmap)bmp);
-			return cast(Bitmap)bmp;
+			processed[1] = new Pic(curFile, cast(Bitmap)bmp);			
 		}
 		return processed[1].bmp;
 	}
@@ -559,8 +553,7 @@ class ImageProcessor
 			angle += fine_rotations[processed[1].fname];
 		fine_rotations[processed[1].fname] = angle;
 		auto rotated = FineRotate(turned, angle);
-		delete processed[1].bmp; // don't need the old one
-		processed[1].bmp = cast(Bitmap) ResizeForBlog(rotated);
+		processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(rotated) );
 		return true;
 	}
 
@@ -578,15 +571,26 @@ class ImageProcessor
 		return turned;
 	}
 
-	Bitmap CropCurrent(int x0, int y0, int x1, int y1)
+	Bitmap CropCurrent(double dx0, double dy0, double dx1, double dy1) // args in 0..1
 	{
 		if (processed[1] is null || processed[1].bmp is null) return null;
+		auto sbmp = Prepare(processed[1].fname);
+		int w0 = sbmp.width, h0 = sbmp.height;
+
+		auto old = processed[1].cropped;
+		if (old.length > 0) { 
+			dx0 = old[0] + (old[2] - old[0]) * dx0;
+			dy0 = old[1] + (old[3] - old[1]) * dy0;
+			dx1 = old[0] + (old[2] - old[0]) * dx1;
+			dy1 = old[1] + (old[3] - old[1]) * dy1;		
+		}
+		int x0 = cast(int)(dx0 * w0), y0 = cast(int)(dy0 * h0);
+		int x1 = cast(int)(dx1 * w0), y1 = cast(int)(dy1 * h0);
 		int w = x1 - x0, h = y1 - y0;
-		int w0 = processed[1].bmp.width, h0 = processed[1].bmp.height;
 		int[] src, dst;
 		src.length = w0 * h0;
 		dst.length = w * h;
-		GetBitmapBits(processed[1].bmp.handle, src.length*4, src.ptr);
+		GetBitmapBits(sbmp.handle, src.length*4, src.ptr);
 		foreach(y; 0..h) {
 			int si = (y + y0) * w0 + x0;
 			int di = y * w;
@@ -594,13 +598,27 @@ class ImageProcessor
 		}
 		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
 		SetBitmapBits(hbm, dst.length*4, dst.ptr);
-		auto bmp = new Bitmap(hbm, true);
-		delete processed[1].bmp;
-		processed[1].bmp = bmp;
+		auto bmp = new Bitmap(hbm, true);		
+		processed[1].ReplaceBmp(bmp);
+		processed[1].cropped = [dx0,dy0,dx1,dy1];
+		delete src; delete dst;
 		return bmp;
 	}
 
 private:
+
+	Bitmap Prepare(string fname) // read and rotate, do not resize yet
+	{
+		auto srcbmp = ReadBitmap(fname);
+		auto turned = ApplyRotation(srcbmp, fname);
+		if (fname in fine_rotations) {
+			auto rotated = FineRotate(turned, fine_rotations[fname]);
+			delete turned;
+			turned = rotated;
+		}
+		return turned;
+	}
+
 	Bitmap ApplyRotation(Bitmap srcbmp, string fname)
 	{
 		if (fname !in rotations) return srcbmp;
@@ -612,12 +630,11 @@ private:
 		if (processed[1] is null || processed[1].bmp is null) return false;
 		int angle = angle_delta;
 		if (processed[1].fname in rotations)
-			angle += rotations[processed[1].fname];
-		delete processed[1].bmp; // don't need the old one		
+			angle += rotations[processed[1].fname];		
 		auto srcbmp = ReadBitmap(processed[1].fname);
 		rotations[processed[1].fname] = angle;
 		auto turned = ApplyRotation(srcbmp, processed[1].fname);
-		processed[1].bmp = cast(Bitmap) ResizeForBlog(turned);
+		processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(turned) );
 		return true;
 	}
 

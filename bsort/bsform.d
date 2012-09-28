@@ -197,7 +197,7 @@ class MainForm : dfl.form.Form
 		btnCrop.click ~= &OnCrop;
 		this.resize ~= &OnResize;
 
-		Control[] cs = [lbxFiles, this, picBox, btnHorizonClear, btnHorizonLineup, btnSave, btnZoom, btnBrowse];
+		Control[] cs = [lbxFiles, this, picBox, btnHorizonClear, btnHorizonLineup, btnSave, btnZoom, btnBrowse, btnCrop];
 		foreach(c; cs) c.keyPress ~= &OnKey;
 
 		toolTip = new ToolTip;
@@ -403,8 +403,8 @@ private:
 	void OnMouseDown(Control c, MouseEventArgs ma)
 	{
 		switch(ma.button) {
-			case MouseButtons.RIGHT: setMark(ma.x, ma.y); break;
-			case MouseButtons.LEFT: setCropMark(ma.x, ma.y); break;
+			case MouseButtons.RIGHT: SetMark(ma.x, ma.y); break;
+			case MouseButtons.LEFT: SetCropMark(ma.x, ma.y); break;
 			default:
 		}
 	}
@@ -441,7 +441,7 @@ private:
 		}
 	}
 
-	void setMark(int x, int y)
+	void SetMark(int x, int y)
 	{
 		int dist(Vec p) { return p.x==0 && p.y==0 ? 0 : (p.x - x)^^2 + (p.y - y)^^2; }
 		int i = 0;
@@ -450,7 +450,7 @@ private:
 		picBox.invalidate();
 	}
 
-	void setCropMark(int x, int y)
+	void SetCropMark(int x, int y)
 	{
 		int dist(Vec p) { return p.x < 0 ? 0 : (p.x - x)^^2 + (p.y - y)^^2; }
 		int i = 0;
@@ -458,7 +458,6 @@ private:
 		cropMarks[i] = Vec(x, y);
 		picBox.invalidate();
 	}
-
 
 	void OnClearMarks(Control sender, EventArgs ea)
 	{
@@ -498,17 +497,18 @@ private:
 		int y0 = min(cropMarks[0].y, cropMarks[1].y);
 		int x1 = max(cropMarks[0].x, cropMarks[1].x);
 		int y1 = max(cropMarks[0].y, cropMarks[1].y);
-		int w = picBox.image.width, h = picBox.image.height, ix0, iy0, ix1, iy1;		
+		int w = picBox.image.width, h = picBox.image.height;
+		double ix0, iy0, ix1, iy1;		
 		if (picBox.sizeMode == PictureBoxSizeMode.STRETCH_IMAGE) { //fit
-			ix0 = x0 * w / picBox.bounds.width;
-			iy0 = y0 * h / picBox.bounds.height;
-			ix1 = x1 * w / picBox.bounds.width;
-			iy1 = y1 * h / picBox.bounds.height;
+			ix0 = cast(double) x0 / picBox.bounds.width;
+			iy0 = cast(double) y0 / picBox.bounds.height;
+			ix1 = cast(double) x1 / picBox.bounds.width;
+			iy1 = cast(double) y1 / picBox.bounds.height;
 		} else { //1:1
-			ix0 = w/2 - (picBox.bounds.width/2 - x0);
-			iy0 = h/2 - (picBox.bounds.height/2 - y0);
-			ix1 = w/2 - (picBox.bounds.width/2 - x1);
-			iy1 = h/2 - (picBox.bounds.height/2 - y1);
+			ix0 = cast(double) (w/2 - (picBox.bounds.width/2 - x0)) / w;
+			iy0 = cast(double) (h/2 - (picBox.bounds.height/2 - y0)) / h;
+			ix1 = cast(double) (w/2 - (picBox.bounds.width/2 - x1)) / w;
+			iy1 = cast(double) (h/2 - (picBox.bounds.height/2 - y1)) / h;
 		}
 		ClearMarks();
 		ShowImage( imgProc.CropCurrent(ix0, iy0, ix1, iy1) );
