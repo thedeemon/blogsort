@@ -1,7 +1,6 @@
 module imageprocessor;
 import dfl.all, std.c.windows.windows, dfl.internal.winapi, std.concurrency, std.range, core.time, std.algorithm;
-import std.typecons, jpg, std.math;
-import core.thread : Thread;
+import std.typecons, jpg, std.math, std.file, core.thread;
 version(verbose) import std.stdio; 
 
 class CachedImage
@@ -466,6 +465,7 @@ class ImageProcessor
 			Tid tid = spawnLinked(strt, thisTid);
 			workers ~= tid;
 		}		
+		//time_reg = regex("[0-9: ]{19}");
 		timer = new Timer;
 		timer.interval = 100;
 		timer.tick ~= &OnTimer;
@@ -603,6 +603,37 @@ class ImageProcessor
 		processed[1].cropped = [dx0,dy0,dx1,dy1];
 		delete src; delete dst;
 		return bmp;
+	}
+
+	string GetTimeStamp(string fname)
+	{		
+		char[] searchTime(char[] data) 
+		{
+			bool good(char c) { return (c>='0' && c<='9') || c==' ' || c==':'; }
+			int i = 0, n = data.length;
+			while(true) {
+				while(i < n && !good(data[i])) i++;
+				if (i >= n) return [];
+				int j = i;
+				while(j < n && good(data[j])) j++;
+				if (j - i >= 19) return data[i..i+19];
+				if (j >= n) return [];
+				i = j;
+			}		
+		}
+
+		if (fname in timestamps) return timestamps[fname];
+		string res = "";
+		try {
+			auto data = cast(char[]) read(fname, 2048);
+			auto t = searchTime(data);
+			if (t.length > 0 && count!(std.ascii.isDigit)(t)==14) {
+				t[4] = '.'; t[7] = '.';
+				res = "(" ~ t.idup ~ ")";
+			}
+		} catch(Exception ex) { }
+		timestamps[fname] = res;
+		return res;
 	}
 
 private:
@@ -780,4 +811,5 @@ private:
 	JpegWriter jpgWriter;
 	int[string] rotations;
 	double[string] fine_rotations;
+	string[string] timestamps;
 }

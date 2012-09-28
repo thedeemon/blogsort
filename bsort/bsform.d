@@ -1,7 +1,6 @@
 module bsform;
-import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor, std.algorithm, std.array;
+import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor, std.algorithm, std.array, std.math;
 version(verbose) import std.stdio;
-import std.math;
 
 class FileItem
 {
@@ -243,11 +242,12 @@ private:
 			foreach(name; files) 				
 					lbxFiles.items.add(new FileItem(name));			
 			lbxFiles.endUpdate();
+			auto stamp = imgProc.GetTimeStamp(ofd.fileName);
 			foreach(idx; 0..lbxFiles.items.length) {
 				FileItem it = cast(FileItem)lbxFiles.items[idx];
 				if (it.fullname == ofd.fileName) {
 					lbxFiles.selectedIndex = idx;
-					this.text = "blogsort " ~ it.name;
+					this.text = "blogsort " ~ it.name ~ " " ~ stamp;
 					break;
 				}
 			}
@@ -266,7 +266,7 @@ private:
 		string prevFile = prev ? prev.fullname : null;
 		string nextFile = next ? next.fullname : null;
 		ShowImage( imgProc.FileSelected(prevFile, it.fullname, nextFile) );
-		this.text = "blogsort " ~ it.name;
+		this.text = "blogsort " ~ it.name ~ " " ~ imgProc.GetTimeStamp(it.fullname);
 		int top = lbxFiles.topIndex;
 		int vn = lbxFiles.bounds.height / 130;
 		if (i > 0 && i == top) lbxFiles.topIndex = top - 1;
