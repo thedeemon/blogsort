@@ -207,18 +207,29 @@ class MainForm : dfl.form.Form
 		toolTip.setToolTip(btnHorizonLineup, "Rotate the image to make marks on one horizontal line (H)");
 		toolTip.setToolTip(btnZoom, "Switch between 100% fit and 1:1 scales (Z)");
 		toolTip.setToolTip(btnCrop, "Crop (C)");
-
-		try {
-			subkey = Registry.currentUser.createSubKey("Software\\blogsort");
-			auto path = cast(RegistryValueSz) subkey.getValue("path", new RegistryValueSz("c:\\zhzm\\"));
-			txtOutFile.text = path.value ~ "pic01.jpg";
-		} catch(Exception ex) {
-			version(verbose) writeln("registry error: ", ex);
-		}
+		LoadSettings();
 		ClearMarks();
 	}
 
 private:
+	void LoadSettings()
+	{
+		try {
+			subkey = Registry.currentUser.createSubKey("Software\\blogsort");
+			auto path = cast(RegistryValueSz) subkey.getValue("path", new RegistryValueSz("c:\\zhzm\\"));
+			txtOutFile.text = path.value ~ "pic01.jpg";
+
+			auto mx = cast( RegistryValueDword) subkey.getValue("maxX", new  RegistryValueDword(1200));
+			auto my = cast( RegistryValueDword) subkey.getValue("maxY", new  RegistryValueDword(900));
+			ImageProcessor.maxOutX = mx.value;
+			ImageProcessor.maxOutY = my.value;
+			txtWidth.text  = to!string(mx.value);
+			txtHeight.text = to!string(my.value);
+		} catch(Exception ex) {
+			version(verbose) writeln("registry error: ", ex);
+		}		
+	}
+
 	void OnBrowse(Control sender, EventArgs ea)
 	{
 		auto ofd = new OpenFileDialog;
@@ -281,7 +292,7 @@ private:
 			return;
 		}
 		int w0 = img.width, h0 = img.height, w, h, SX=bounds.width-200, SY=bounds.height-80;
-		limitSize(w0, h0, SX, SY, w, h);
+		LimitSize(w0, h0, SX, SY, w, h);
 		picBox.image = img;
 		picBox.bounds = dfl.all.Rect(196+SX/2-w/2, 40+SY/2-h/2, w, h);		
 		picBox.invalidate(true);
@@ -340,6 +351,8 @@ private:
 		auto bs = txtOutFile.text.lastIndexOf('\\');
 		if (bs < 0 || subkey is null) return;
 		subkey.setValue("path", new RegistryValueSz(txtOutFile.text[0..bs+1]));
+		subkey.setValue("maxX", new RegistryValueDword(ImageProcessor.maxOutX));
+		subkey.setValue("maxY", new RegistryValueDword(ImageProcessor.maxOutY));
 		subkey.close();
 	}
 
@@ -482,12 +495,9 @@ private:
 		int dx = horMarks[i ^ 1].x - horMarks[i].x;
 		int dy = horMarks[i ^ 1].y - horMarks[i].y;
 		double angle = std.math.atan2(cast(double)dy, cast(double)dx);
-		version(verbose) writeln("angle=", angle*180/3.14159265);
-		else {
-			if (imgProc.FineRotation(angle)) { 
-				ClearMarks();
-				ShowImage(imgProc.current);
-			}
+		if (imgProc.FineRotation(angle)) { 
+			ClearMarks();
+			ShowImage(imgProc.current);
 		}
 	}
 
@@ -522,7 +532,7 @@ private:
 		if (picBox.image is null) return;
 		auto img = picBox.image;
 		int w0 = img.width, h0 = img.height, w, h, SX=bounds.width-200, SY=bounds.height-80;
-		limitSize(w0, h0, SX, SY, w, h);
+		LimitSize(w0, h0, SX, SY, w, h);
 		picBox.bounds = dfl.all.Rect(196+SX/2-w/2, 40+SY/2-h/2, w, h);
 
 		int n = SY / 130;

@@ -194,6 +194,7 @@
  </Config>
  <Folder name="bsort">
   <File path="bsform.d" />
+  <File path="config.d" />
   <File path="ImageProcessor.d" />
   <File path="jpg.d" />
   <File path="winmain.d" />

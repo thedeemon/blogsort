@@ -1,6 +1,6 @@
 module imageprocessor;
 import dfl.all, std.c.windows.windows, dfl.internal.winapi, std.concurrency, std.range, core.time, std.algorithm;
-import std.typecons, jpg, std.math, std.file, core.thread;
+import std.typecons, jpg, config, std.math, std.file, core.thread;
 version(verbose) import std.stdio; 
 
 class CachedImage
@@ -94,8 +94,8 @@ synchronized class LabourDept
 			}
 		}
 		jobs[job.prio] ~= job;
-		if (job.prio == Priority.Visible && jobs[job.prio].length > maxThumbJobs) {
-			jobs[job.prio] = jobs[job.prio][$-maxThumbJobs..$];
+		if (job.prio == Priority.Visible && jobs[job.prio].length > config.maxThumbJobs) {
+			jobs[job.prio] = jobs[job.prio][$-config.maxThumbJobs..$];
 		}
 	}
 
@@ -116,11 +116,10 @@ synchronized class LabourDept
 	static shared LabourDept dept;
 
 private:
-	Job[][4] jobs; //4 priorities
-	immutable maxThumbJobs = 8;
+	Job[][4] jobs; //4 priorities	
 }
 
-void limitSize(int w0, int h0, int maxX, int maxY, ref int w, ref int h)
+void LimitSize(int w0, int h0, int maxX, int maxY, ref int w, ref int h)
 {
 	w = min(maxX, w0);
 	h = h0 * w / w0;
@@ -145,8 +144,7 @@ class PictureCache
 {
 	CachedPicture[string] pic_cache;
 	bool[string] loading_pics;
-	int pic_req_no = 0;
-	immutable maxPics = 7;
+	int pic_req_no = 0;	
 
 	Picture Get(string fname) shared
 	{
@@ -181,7 +179,7 @@ class PictureCache
 		loading_pics.remove(name);
 		pic_req_no++;				
 		pic_cache[name] = new shared(CachedPicture)(name, pic, pic_req_no);
-		if (pic_cache.length > maxPics) {
+		if (pic_cache.length > config.pictureCacheSize) {
 			auto tbs = pic_cache.byKey().map!(name => tuple(name, pic_cache[name]));
 			auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
 			auto cp = cast(CachedPicture) mp.front[1];
@@ -240,7 +238,7 @@ shared(Bitmap) ResizeToThumb(Picture pic)
 	if (memdc is null) return null;
 	scope(exit) DeleteDC(memdc);
 	int w0 = pic.width, h0 = pic.height, w,h;
-	limitSize(w0, h0, 160, 120, w, h);
+	LimitSize(w0, h0, 160, 120, w, h);
 	HBITMAP hbm = CreateCompatibleBitmap(g.handle, w, h);
 	if (hbm is null) return null;
 	HGDIOBJ oldbm = SelectObject(memdc, hbm);
@@ -260,7 +258,7 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 	auto res = GetBitmapBits(orgbmp.handle, org.length, org.ptr);
 	assert(res==orgsz);
 
-	limitSize(w0, h0, ImageProcessor.maxOutX, ImageProcessor.maxOutY, w, h);
+	LimitSize(w0, h0, ImageProcessor.maxOutX, ImageProcessor.maxOutY, w, h);
 	if (w>=w0 && h>=h0) 
 		return cast(shared(Bitmap))orgbmp;
 
@@ -420,7 +418,7 @@ struct Vec
 	int mul(Vec v) pure { return x * v.y - y * v.x; }
 }
 
-bool insideRect(Vec p, ref Vec[4] ps) pure
+bool InsideRect(Vec p, ref Vec[4] ps) pure
 {
 	int[4] s; //signs
 	foreach(i; 0..4) {
@@ -434,8 +432,7 @@ bool insideRect(Vec p, ref Vec[4] ps) pure
 class ImageProcessor
 {
 	static shared int maxOutX = 1200;
-	static shared int maxOutY = 900;
-	immutable NT = 4;
+	static shared int maxOutY = 900;	
 
 	Bitmap GetThumb(string fname)
 	{
@@ -461,7 +458,7 @@ class ImageProcessor
 		LabourDept.dept = new shared(LabourDept);
 		picCache = new shared(PictureCache);
 		auto strt = (Tid iptid) { with(new Worker(iptid)) Run(); };			
-		foreach(i; 0..NT) {			
+		foreach(i; 0..config.numWorkerThreads) {			
 			Tid tid = spawnLinked(strt, thisTid);
 			workers ~= tid;
 		}		
@@ -732,7 +729,7 @@ private:
 		foreach(pt; 0..100) {
 			int px = pt * ix / 100 + (100-pt) * ix2 / 100;
 			int py = pt * iy / 100 + (100-pt) * iy2 / 100;
-			bool inside = insideRect(Vec(px, -py), rc);
+			bool inside = InsideRect(Vec(px, -py), rc);
 			int area = abs(py) * abs(px);
 			if (inside && area > maxarea) {
 				maxarea = area;
@@ -774,7 +771,7 @@ private:
 	void GotThumb(ThumbCreated tb)
 	{		
 		thumb_cache[tb.fname] = new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req);
-		if (thumb_cache.length > max_thumbs) {
+		if (thumb_cache.length > config.thumbCacheSize) {
 			auto tbs = thumb_cache.byKey().map!(name => tuple(name, thumb_cache[name]));
 			auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
 			mp.front[1].dispose();
@@ -801,7 +798,6 @@ private:
 
 	Pic[string] thumb_cache;
 	int req_no = 0;
-	immutable max_thumbs = 100;
 	Tid[] workers;
 	Timer timer;
 	void delegate(string) onGotThumb;
