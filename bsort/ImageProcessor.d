@@ -114,6 +114,7 @@ synchronized class LabourDept
 	}
 
 	static shared LabourDept dept;
+	static shared bool quit = false;
 
 private:
 	Job[][4] jobs; //4 priorities	
@@ -159,14 +160,20 @@ class PictureCache
 
 	Picture WaitIfLoading(string fname) shared
 	{
+		version(verbose) writeln("wait for loading ", fname);
 		while(true) {
 			bool loading = false;
 			synchronized(this) {
 				auto loaded = fname in pic_cache;
-				if (loaded) return cast(Picture) pic_cache[fname].pic;
+				if (loaded) {
+					version(verbose) writeln("wait ended ok for ", fname);
+					return cast(Picture) pic_cache[fname].pic;
+				}
 				loading = !!(fname in loading_pics);
 			}
 			if (loading) {
+				if (LabourDept.quit) return null;
+				version(verbose) writeln("sleeping waiting ", fname);
 				Thread.sleep( dur!("msecs")(77) );
 				continue;
 			}
@@ -208,10 +215,15 @@ Picture ReadPicture(string fname)
 	int tries = 3;
 	while(tries > 0) {
 		try {
-			version(verbose) auto t0 = core.time.TickDuration.currSystemTick;
+			version(verbose) { 
+				writeln("reading picture ", fname);
+				auto t0 = core.time.TickDuration.currSystemTick;
+			}
 			auto p = new Picture(fname);
-			version(verbose) auto dt = core.time.TickDuration.currSystemTick - t0;
-			version(verbose) writefln("picture %s read in %s ms.", fname, dt.msecs);
+			version(verbose) { 
+				auto dt = core.time.TickDuration.currSystemTick - t0;
+				writefln("picture %s read in %s ms.", fname, dt.msecs);
+			}
 			picCache.Loaded(fname, p);
 			return p;
 		} catch (DflException ex) { //failed
@@ -478,6 +490,7 @@ class ImageProcessor
 
 	void Stop()
 	{
+		LabourDept.quit = true;
 		foreach(w; workers)
 			w.send(Exit());
 		while(terminated.length < workers.length)
@@ -624,7 +637,7 @@ class ImageProcessor
 		try {
 			auto data = cast(char[]) read(fname, 2048);
 			auto t = searchTime(data);
-			if (t.length > 0 && count!(std.ascii.isDigit)(t)==14) {
+			if (t.count!(std.ascii.isDigit)==14) {
 				t[4] = '.'; t[7] = '.';
 				res = "(" ~ t.idup ~ ")";
 			}

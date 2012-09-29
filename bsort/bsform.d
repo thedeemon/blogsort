@@ -189,6 +189,8 @@ class MainForm : dfl.form.Form
 		txtHeight.lostFocus ~= &OnOutSizeChange;
 		picBox.mouseDown ~= &OnMouseDown;
 		picBox.mouseMove ~= &OnMouseMove;
+		picBox.mouseUp ~= &OnMouseUp;
+		picBox.mouseLeave ~= &OnMouseUp;
 		picBox.paint ~= &PaintMarks;
 		this.closed ~= &OnClose;
 		btnHorizonClear.click ~= &OnClearMarks;
@@ -417,6 +419,13 @@ private:
 
 	void OnMouseDown(Control c, MouseEventArgs ma)
 	{
+		marking = true;
+		OnMouseMove(c, ma);
+	}
+
+	void OnMouseMove(Control c, MouseEventArgs ma)
+	{
+		if (!marking) return;
 		switch(ma.button) {
 			case MouseButtons.RIGHT: SetMark(ma.x, ma.y); break;
 			case MouseButtons.LEFT: SetCropMark(ma.x, ma.y); break;
@@ -424,9 +433,9 @@ private:
 		}
 	}
 
-	void OnMouseMove(Control c, MouseEventArgs ma)
+	void OnMouseUp(Control c, MouseEventArgs ma)
 	{
-		OnMouseDown(c, ma);
+		marking = false;
 	}
 
 	void PaintMarks(Control c, PaintEventArgs pa)
@@ -548,4 +557,5 @@ private:
 	ToolTip toolTip;
 	RegistryKey subkey;
 	Vec[2] cropMarks;
+	bool marking = false;
 }
