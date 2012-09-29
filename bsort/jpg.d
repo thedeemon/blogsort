@@ -1,5 +1,5 @@
 module jpg;
-import dfl.all, std.c.windows.windows, std.stdio;
+import dfl.all, std.c.windows.windows, std.stdio, config;
 version(unittest) {	import std.traits; }
 
 extern(Windows) { 
@@ -68,7 +68,7 @@ class JpegWriter
 		jpeg_destroy_compress(&cinfo);
 	}
 
-	void Write(Bitmap bmp, string fname, int quality = 84)
+	void Write(Bitmap bmp, string fname, int quality = config.jpegQuality)
 	{
 		auto f = File(fname, "wb");
 		jpeg_stdio_dest(&cinfo, cast(void*)f.getFP());

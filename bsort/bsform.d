@@ -77,7 +77,7 @@ class MainForm : dfl.form.Form
 		//~DFL dfl.textbox.TextBox=txtOutFile
 		txtOutFile = new dfl.textbox.TextBox();
 		txtOutFile.name = "txtOutFile";
-		txtOutFile.text = "e:\\zhzm\\out01.jpg";
+		txtOutFile.text = "c:\\temp\\out01.jpg";
 		txtOutFile.bounds = dfl.all.Rect(128, 8, 280, 24);
 		txtOutFile.parent = this;
 		//~DFL dfl.label.Label=label1
@@ -218,7 +218,7 @@ private:
 	{
 		try {
 			subkey = Registry.currentUser.createSubKey("Software\\blogsort");
-			auto path = cast(RegistryValueSz) subkey.getValue("path", new RegistryValueSz("c:\\zhzm\\"));
+			auto path = cast(RegistryValueSz) subkey.getValue("path", new RegistryValueSz("c:\\temp\\"));
 			txtOutFile.text = path.value ~ "pic01.jpg";
 
 			auto mx = cast( RegistryValueDword) subkey.getValue("maxX", new  RegistryValueDword(1200));
