@@ -288,8 +288,8 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 		real sx0 = x * w0w, sx1 = (x+1) * w0w;
 		aisx0[x] = cast(int) sx0;
 		aisx1[x] = cast(int) sx1;
-		sh0[x] = cast(int) ((1.0 - std.math.modf(sx0, t0)) / w0w * 256);
-		sh1[x] = cast(int) (std.math.modf(sx1, t1) / w0w * 256);
+		sh0[x] = cast(int) ((1.0 - modf(sx0, t0)) / w0w * 256);
+		sh1[x] = cast(int) (modf(sx1, t1) / w0w * 256);
 	}
 	aisx1[$-1] = aisx0[$-1];
 	int kx = cast(int)(256 / w0w), ky = cast(int) (256 / h0h);
@@ -725,8 +725,8 @@ private:
 		real y1 = w2 * sin(angle) + h2 * cos(angle);
 		int ix = cast(int)x1;
 		int iy = cast(int)y1;
-
 		real x2, y2;
+		version(verbose) auto tt0 = core.time.TickDuration.currSystemTick;		
 		if (w0 >= h0) {
 			x2 = -w2 * cos(angle) - h2 * sin(angle);
 			y2 = -w2 * sin(angle) + h2 * cos(angle);
@@ -754,21 +754,45 @@ private:
 		int[] src, dst;		
 		src.length = w0 * h0; dst.length = w * h;
 		GetBitmapBits(turned.handle, src.length*4, src.ptr);
+		void addrgb(ubyte* rgb, int kxy, ref int r, ref int g, ref int b)
+		{
+			r += rgb[0]*kxy;
+			g += rgb[1]*kxy;
+			b += rgb[2]*kxy;
+		}
 		foreach(y; 0..h) {
 			int di = y * w;	
-			real sx = -bx * cos(angle) - (-by + y) * sin(angle) + w2;
-			real sy = -bx * sin(angle) + (-by + y) * cos(angle) + h2;
-			real dx = cos(angle), dy = sin(angle);
+			double sx = -bx * cos(angle) - (-by + y) * sin(angle) + w2;
+			double sy = -bx * sin(angle) + (-by + y) * cos(angle) + h2;
+			double dx = cos(angle), dy = sin(angle);
 			foreach(x; 0..w) {
 				int isx = cast(int)sx, isy = cast(int)sy;
 				if (isx < 0) isx = 0;
-				if (isx >= w0) isx = w0 - 1;
 				if (isy < 0) isy = 0;
-				if (isy >= h0) isy = h0 - 1;
-				dst[di + x] = src[isy*w0 + isx];
+				if (isx < w0-1 && isy < h0-1) {					
+					int kx = (cast(int) (sx * 256)) & 0xFF;
+					int ky = (cast(int) (sy * 256)) & 0xFF;
+					int r=0,g=0,b=0;
+					int si = isy*w0 + isx;
+					addrgb(cast(ubyte*) &src[si], (256-kx)*(256-ky), r,g,b);
+					addrgb(cast(ubyte*) &src[si+1], kx*(256-ky), r,g,b);
+					addrgb(cast(ubyte*) &src[si+w0], (256-kx)*ky, r,g,b);
+					addrgb(cast(ubyte*) &src[si+w0+1], kx*ky, r,g,b);
+					ubyte* rgb = cast(ubyte*) &dst[di + x];
+					rgb[0] = cast(ubyte)(r >> 16);
+					rgb[1] = cast(ubyte)(g >> 16);
+					rgb[2] = cast(ubyte)(b >> 16);
+				} else {
+					isx = w0 - 1;				
+					isy = h0 - 1;				
+					dst[di + x] = src[isy*w0 + isx];
+				}
 				sx += dx; sy += dy;
 			}
 		}
+		version(verbose) auto dt = core.time.TickDuration.currSystemTick - tt0;
+		version(verbose) writefln("rotated in %s ms", dt.msecs);
+
 		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
 		SetBitmapBits(hbm, dst.length*4, dst.ptr);
 		delete src;
