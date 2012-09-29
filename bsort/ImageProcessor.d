@@ -646,6 +646,33 @@ class ImageProcessor
 		return res;
 	}
 
+	bool AutoLevels()
+	{
+		if (processed[1] is null || processed[1].bmp is null) return false;
+		int w = processed[1].bmp.width, h = processed[1].bmp.height;
+		ubyte[] data;
+		immutable sz = w * h * 4; 
+		data.length = sz;
+		auto res = GetBitmapBits(processed[1].bmp.handle, data.length, data.ptr);
+		assert(res==sz);
+		int mn = 255, mx = 0;//, i = 0;
+		foreach(i; iota(0, sz, 4)) {
+			foreach(c; data[i..i+3]) {
+				if (c < mn) mn = c;
+				if (c > mx) mx = c;
+			}			
+		}		
+		if (mx <= mn || (mn==0 && mx==255)) return false;		
+		ubyte[256] tab;
+		foreach(x; mn..mx+1) 
+			tab[x] = cast(ubyte) ((x - mn) * 255 / (mx-mn));		
+		foreach(i; iota(0, sz, 4)) 
+			foreach(ref x; data[i..i+3]) x = tab[x];		
+		SetBitmapBits(processed[1].bmp.handle, sz, data.ptr);
+		delete data;		
+		return true;
+	}
+
 private:
 
 	Bitmap Prepare(string fname) // read and rotate, do not resize yet
