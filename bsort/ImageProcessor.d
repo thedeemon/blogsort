@@ -284,16 +284,16 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 	int[] aisx0, aisx1;
 	aisx0.length = w; aisx1.length = w; sh0.length = w; sh1.length = w;
 	immutable eps = 1.0 / 256;
+	immutable int kx = cast(int)(256 / w0w + 0.5), ky = cast(int) (256 / h0h + 0.5);
 	foreach(x; 0..w) {
 		real sx0 = x * w0w, sx1 = (x+1) * w0w;
 		aisx0[x] = cast(int) sx0;
 		aisx1[x] = cast(int) sx1;
-		sh0[x] = cast(int) ((1.0 - modf(sx0, t0)) / w0w * 256);
-		sh1[x] = cast(int) (modf(sx1, t1) / w0w * 256);
+		sh0[x] = cast(int) ((1.0 - modf(sx0, t0)) / w0w * 256 + 0.5);
+		//sh1[x] = cast(int) (modf(sx1, t1) / w0w * 256 + 0.5);
+		sh1[x] = 256 - sh0[x] - (aisx1[x] - aisx0[x] - 1)*kx;
 	}
 	aisx1[$-1] = aisx0[$-1];
-	int kx = cast(int)(256 / w0w), ky = cast(int) (256 / h0h);
-	
 	foreach(y; 0..h) {		
 		/*int sy = y * h0 / h;	//nearest neighbor
 		foreach(x; 0..w) {
@@ -305,8 +305,9 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 		real sy0 = h0h * y, sy1 = h0h * (y+1);
 		int isy0 = cast(int) sy0;
 		int isy1 = cast(int) sy1;
-		int ysh0 = cast(int) ((1.0 - std.math.modf(sy0, t0)) / h0h * 256);
-		int ysh1 = cast(int) (std.math.modf(sy1, t1) / h0h * 256);
+		int ysh0 = cast(int) ((1.0 - std.math.modf(sy0, t0)) / h0h * 256 + 0.5);
+		//int ysh1 = cast(int) (std.math.modf(sy1, t1) / h0h * 256);
+		int ysh1 = 256 - ysh0 - (isy1 - isy0 - 1) * ky;
 		if (y==h-1) isy1 = isy0;
 
 		void addRow(int rsi, int rk) {
