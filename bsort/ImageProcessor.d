@@ -788,18 +788,19 @@ private:
 			g += rgb[1]*kxy;
 			b += rgb[2]*kxy;
 		}
+		immutable long unit = 1L << 24;
 		foreach(y; 0..h) {
 			int di = y * w;	
-			double sx = -bx * cos(angle) - (-by + y) * sin(angle) + w2;
-			double sy = -bx * sin(angle) + (-by + y) * cos(angle) + h2;
-			double dx = cos(angle), dy = sin(angle);
+			long sx = cast(long)((-bx * cos(angle) - (-by + y) * sin(angle) + w2) * unit);
+			long sy = cast(long)((-bx * sin(angle) + (-by + y) * cos(angle) + h2) * unit);
+			long dx = cast(long)(cos(angle) * unit), dy = cast(long)(sin(angle) * unit);
 			foreach(x; 0..w) {
-				int isx = cast(int)sx, isy = cast(int)sy;
+				int isx = cast(int)(sx >> 24), isy = cast(int)(sy >> 24);
 				if (isx < 0) isx = 0;
 				if (isy < 0) isy = 0;
 				if (isx < w0-1 && isy < h0-1) {					
-					int kx = (cast(int) (sx * 256)) & 0xFF;
-					int ky = (cast(int) (sy * 256)) & 0xFF;
+					int kx = cast(int) ((sx >> 16) & 0xFFL);
+					int ky = cast(int) ((sy >> 16) & 0xFFL);
 					int r=0,g=0,b=0;
 					int si = isy*w0 + isx;
 					addrgb(cast(ubyte*) &src[si], (256-kx)*(256-ky), r,g,b);
