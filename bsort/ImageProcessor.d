@@ -609,11 +609,12 @@ class ImageProcessor
 		}
 		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
 		SetBitmapBits(hbm, dst.length*4, dst.ptr);
-		auto bmp = new Bitmap(hbm, true);		
-		processed[1].ReplaceBmp(bmp);
+		auto bmp = new Bitmap(hbm, true);	
+		auto rbmp = cast(Bitmap) ResizeForBlog(bmp);
+		processed[1].ReplaceBmp(rbmp);
 		processed[1].cropped = [dx0,dy0,dx1,dy1];
 		delete src; delete dst;
-		return bmp;
+		return rbmp;
 	}
 
 	string GetTimeStamp(string fname)
