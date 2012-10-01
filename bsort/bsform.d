@@ -319,6 +319,10 @@ private:
 	{
 		string fname = txtOutFile.text, orgname;
 		if (imgProc.current is null) return; // nothing to save		
+		if (imgProc.curFile in saved) {
+			string msg = "This picture was already saved as " ~ saved[imgProc.curFile] ~ ". Save it as " ~ fname ~ " too?";
+			if (msgBox(msg, "Possible duplicate", MsgBoxButtons.YES_NO, MsgBoxIcon.WARNING)==DialogResult.NO) return;
+		}
 		if (fname.exists) {
 			if (msgBox("File " ~ fname ~ " exists. Overwrite?", "Warning", MsgBoxButtons.YES_NO, MsgBoxIcon.WARNING)==DialogResult.NO) {
 				while(fname.exists) 
@@ -328,7 +332,7 @@ private:
 			}
 		}
 		if (imgProc.SaveCurrent(fname, orgname)) {
-			saved[orgname] = true;			
+			saved[orgname] = fname;			
 			txtOutFile.text = nextName(fname);
 			lbxFiles.invalidate(true);
 		} else
@@ -567,7 +571,7 @@ private:
 	}
 
 	ImageProcessor imgProc;
-	bool[string] saved;
+	string[string] saved;
 	Vec[2] horMarks;
 	ToolTip toolTip;
 	RegistryKey subkey;

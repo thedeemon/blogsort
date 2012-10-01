@@ -545,6 +545,12 @@ class ImageProcessor
 		return processed[1] ? processed[1].bmp : null;
 	}
 
+	@property string curFile()
+	{
+		return processed[1] ? processed[1].fname : null;
+	}
+
+
 	bool TurnLeft()
 	{
 		return Turn90(1);		
