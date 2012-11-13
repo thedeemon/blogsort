@@ -290,8 +290,14 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 		aisx0[x] = cast(int) sx0;
 		aisx1[x] = cast(int) sx1;
 		sh0[x] = cast(int) ((1.0 - modf(sx0, t0)) / w0w * 256 + 0.5);
-		//sh1[x] = cast(int) (modf(sx1, t1) / w0w * 256 + 0.5);
-		sh1[x] = 256 - sh0[x] - (aisx1[x] - aisx0[x] - 1)*kx;
+		int kxarea = (aisx1[x] - aisx0[x] - 1)*kx;
+		if ((sh0[x] + kxarea) > 256)
+			sh0[x] = 256 - kxarea;
+		sh1[x] = 256 - sh0[x] - kxarea;
+		assert(sh0[x] >= 0);
+		assert(kxarea >= 0);
+		assert(sh1[x] >= 0);
+		assert(sh0[x] + kxarea + sh1[x] == 256);
 	}
 	aisx1[$-1] = aisx0[$-1];
 	foreach(y; 0..h) {		
@@ -307,7 +313,15 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 		int isy1 = cast(int) sy1;
 		int ysh0 = cast(int) ((1.0 - std.math.modf(sy0, t0)) / h0h * 256 + 0.5);
 		//int ysh1 = cast(int) (std.math.modf(sy1, t1) / h0h * 256);
-		int ysh1 = 256 - ysh0 - (isy1 - isy0 - 1) * ky;
+		int kyarea = (isy1 - isy0 - 1) * ky;		
+		if (ysh0 +  kyarea > 256)
+			ysh0 = 256 - kyarea;
+		int ysh1 = 256 - ysh0 - kyarea;
+		assert(ysh0 >= 0);
+		assert(ysh1 >= 0);
+		assert(kyarea >= 0);
+		assert(ysh0 + kyarea + ysh1 == 256);
+
 		if (y==h-1) isy1 = isy0;
 
 		void addRow(int rsi, int rk) {
@@ -361,7 +375,6 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 			data[di+2] = cast(ubyte) (row[x][2] >> 16);
 			di += 4;
 		}
-
 	}	
 	version(verbose) auto dt = core.time.TickDuration.currSystemTick - tt0;
 	version(verbose) writefln("resized in %s ms", dt.msecs);
