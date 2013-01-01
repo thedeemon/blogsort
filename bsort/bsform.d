@@ -398,6 +398,7 @@ private:
 			default : 
 		}		
 		if (k.keyCode == Keys.ESCAPE) OnClearMarks(null, null);
+		if (c is lbxFiles) k.handled = true;
 	}
 
 	void OnTurnLeft(Control sender, EventArgs ea)
