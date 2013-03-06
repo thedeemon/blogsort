@@ -11,7 +11,7 @@ class FileItem
 		name = fname[i+1..$];
 	}
 
-	string toString() const
+	override string toString() const
 	{
 		return name;
 	}

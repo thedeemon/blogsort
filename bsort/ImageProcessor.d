@@ -28,8 +28,8 @@ class Pic : CachedImage
 		bmp = b;
 		cropped = [];
 	}
-	void dispose() { if (bmp) delete bmp; }
-	void dispose() shared { if (bmp) delete bmp; }
+	override void dispose() { if (bmp) delete bmp; }
+	override void dispose() shared { if (bmp) delete bmp; }
 }
 
 class CachedPicture : CachedImage
@@ -41,8 +41,8 @@ class CachedPicture : CachedImage
 		super(req, filename); pic = pict;
 	}
 
-	void dispose() { if (pic) pic.dispose(); }
-	void dispose() shared { if (pic) { auto p = cast(Picture) pic; p.dispose(); } }
+	override void dispose() { if (pic) pic.dispose(); }
+	override void dispose() shared { if (pic) { auto p = cast(Picture) pic; p.dispose(); } }
 }
 
 // messages
@@ -66,7 +66,7 @@ class JGetThumb : Job
 {
 	int req;
 	this(string filename, int req_no) { super(Priority.Visible, filename); req = req_no; }
-	string toString() const { return "GetThumb " ~ fname; }
+	override string toString() const { return "GetThumb " ~ fname; }
 }
 
 class JPrepare : Job //read and resize to blogsize
@@ -74,7 +74,7 @@ class JPrepare : Job //read and resize to blogsize
 	int angle;
 	double fangle;
 	this(string filename, int rotation, double frot) { super(Priority.Soon, filename); angle = rotation; fangle = frot; }
-	string toString() const { return "Prepare " ~ fname; }
+	override string toString() const { return "Prepare " ~ fname; }
 }
 
 synchronized class LabourDept
@@ -187,11 +187,11 @@ class PictureCache
 		pic_req_no++;				
 		pic_cache[name] = new shared(CachedPicture)(name, pic, pic_req_no);
 		if (pic_cache.length > config.pictureCacheSize) {
-			auto tbs = pic_cache.byKey().map!(name => tuple(name, pic_cache[name]));
-			auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
-			auto cp = cast(CachedPicture) mp.front[1];
+			auto tbs = pic_cache.byKey().map!((string name) => tuple(name, pic_cache[name]));
+			auto mp = tbs.minCount!((a,b) => a[1].last_req < b[1].last_req)[0];
+			auto cp = cast(CachedPicture) mp[1];
 			cp.dispose();
-			pic_cache.remove(mp.front[0]);
+			pic_cache.remove(mp[0]);
 		}
 	}
 }
@@ -859,9 +859,9 @@ private:
 		thumb_cache[tb.fname] = new Pic(tb.fname, cast(Bitmap)tb.bmp, tb.req);
 		if (thumb_cache.length > config.thumbCacheSize) {
 			auto tbs = thumb_cache.byKey().map!(name => tuple(name, thumb_cache[name]));
-			auto mp = tbs.minPos!((a,b) => a[1].last_req < b[1].last_req);
-			mp.front[1].dispose();
-			thumb_cache.remove(mp.front[0]);
+			auto mp = tbs.minCount!((a,b) => a[1].last_req < b[1].last_req)[0];
+			mp[1].dispose();
+			thumb_cache.remove(mp[0]);
 		}
 		if (onGotThumb !is null) onGotThumb(tb.fname);
 	}
