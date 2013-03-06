@@ -345,9 +345,9 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 					b += org[si+2] * sh1[x];
 					row[x][0] += r * rk; row[x][1] += g * rk; row[x][2] += b * rk;
 				} else { // just one pixel					
-					row[x][0] += org[si] * rk;
-					row[x][1] += org[si+1] * rk;
-					row[x][2] += org[si+2] * rk;
+					row[x][0] += org[si] * rk * 256;
+					row[x][1] += org[si+1] * rk * 256;
+					row[x][2] += org[si+2] * rk * 256;
 				}
 			} //for x
 		} //addRow
