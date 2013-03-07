@@ -637,7 +637,6 @@ class ImageProcessor
 		return processed[1] ? processed[1].fname : null;
 	}
 
-
 	bool TurnLeft()
 	{
 		return Turn90(1);		
@@ -648,14 +647,31 @@ class ImageProcessor
 		return Turn90(3);
 	}
 
+	bool Undo()
+	{
+		if (processed[1] is null || processed[1].bmp is null) return false;
+		if (Trans(processed[1].fname).Undo()) {
+			auto turned = Prepare(processed[1].fname);
+			processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(turned) );
+			return true;
+		} else
+			return false;
+	}
+
+	bool UndoAll()
+	{
+		if (processed[1] is null || processed[1].bmp is null) return false;
+		Trans(processed[1].fname).Clear();
+		auto turned = Prepare(processed[1].fname);
+		processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(turned) );
+		return true;
+	}
+
 	bool FineRotation(double angle)
 	{
 		if (processed[1] is null || processed[1].bmp is null) return false;
-		auto srcbmp = ReadBitmap(processed[1].fname);
-		auto tfs = Trans(processed[1].fname);
-		auto turned = ApplyRotation90(srcbmp, tfs);
-		tfs.FineRotate(angle);
-		auto rotated = FineRotate(turned, tfs.cur.fine_rotation);
+		Trans(processed[1].fname).FineRotate(angle);
+		auto rotated = Prepare(processed[1].fname);
 		processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(rotated) );
 		return true;
 	}
@@ -792,10 +808,8 @@ private:
 	bool Turn90(int angle_delta)
 	{
 		if (processed[1] is null || processed[1].bmp is null) return false;
-		auto tfs = Trans(processed[1].fname);
-		tfs.Turn90(angle_delta);
-		auto srcbmp = ReadBitmap(processed[1].fname);		
-		auto turned = ApplyRotation90(srcbmp, tfs);
+		Trans(processed[1].fname).Turn90(angle_delta);
+		auto turned = Prepare(processed[1].fname);
 		processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(turned) );
 		return true;
 	}

@@ -1,4 +1,4 @@
-module bsform;
+﻿module bsform;
 import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor, std.algorithm, std.array, std.math;
 version(verbose) import std.stdio;
 
@@ -37,11 +37,11 @@ class MainForm : dfl.form.Form
 	dfl.label.Label label4;
 	dfl.button.Button btnTurnLeft;
 	dfl.button.Button btnTurnRight;
-	dfl.label.Label label5;
-	dfl.button.Button btnHorizonClear;
+	dfl.button.Button btnUndoAll;
 	dfl.button.Button btnHorizonLineup;
 	dfl.button.Button btnCrop;
 	dfl.button.Button btnAuto;
+	dfl.button.Button btnUndo;
 	//~Entice Designer variables end here.
 	
 	this()
@@ -67,54 +67,54 @@ class MainForm : dfl.form.Form
 		btnSave = new dfl.button.Button();
 		btnSave.name = "btnSave";
 		btnSave.text = "Save";
-		btnSave.bounds = dfl.all.Rect(428, 8, 64, 24);
+		btnSave.bounds = dfl.all.Rect(408, 8, 64, 24);
 		btnSave.parent = this;
 		//~DFL dfl.button.Button=btnZoom
 		btnZoom = new dfl.button.Button();
 		btnZoom.name = "btnZoom";
 		btnZoom.text = "Zoom";
-		btnZoom.bounds = dfl.all.Rect(528, 8, 64, 24);
+		btnZoom.bounds = dfl.all.Rect(486, 8, 64, 24);
 		btnZoom.parent = this;
 		//~DFL dfl.textbox.TextBox=txtOutFile
 		txtOutFile = new dfl.textbox.TextBox();
 		txtOutFile.name = "txtOutFile";
 		txtOutFile.text = "c:\\temp\\out01.jpg";
-		txtOutFile.bounds = dfl.all.Rect(128, 8, 280, 24);
+		txtOutFile.bounds = dfl.all.Rect(120, 8, 280, 24);
 		txtOutFile.parent = this;
 		//~DFL dfl.label.Label=label1
 		label1 = new dfl.label.Label();
 		label1.name = "label1";
 		label1.text = "Out:";
 		label1.textAlign = dfl.all.ContentAlignment.MIDDLE_RIGHT;
-		label1.bounds = dfl.all.Rect(88, 8, 36, 24);
+		label1.bounds = dfl.all.Rect(80, 8, 36, 24);
 		label1.parent = this;
 		//~DFL dfl.label.Label=label2
 		label2 = new dfl.label.Label();
 		label2.name = "label2";
 		label2.text = "max size:";
 		label2.textAlign = dfl.all.ContentAlignment.MIDDLE_RIGHT;
-		label2.bounds = dfl.all.Rect(1080, 8, 52, 24);
+		label2.bounds = dfl.all.Rect(1100, 8, 52, 24);
 		label2.parent = this;
 		//~DFL dfl.textbox.TextBox=txtWidth
 		txtWidth = new dfl.textbox.TextBox();
 		txtWidth.name = "txtWidth";
 		txtWidth.text = "1200";
 		txtWidth.textAlign = dfl.all.HorizontalAlignment.CENTER;
-		txtWidth.bounds = dfl.all.Rect(1136, 8, 48, 24);
+		txtWidth.bounds = dfl.all.Rect(1164, 8, 40, 24);
 		txtWidth.parent = this;
 		//~DFL dfl.label.Label=label3
 		label3 = new dfl.label.Label();
 		label3.name = "label3";
 		label3.text = "x";
 		label3.textAlign = dfl.all.ContentAlignment.MIDDLE_CENTER;
-		label3.bounds = dfl.all.Rect(1192, 8, 12, 24);
+		label3.bounds = dfl.all.Rect(1212, 8, 12, 24);
 		label3.parent = this;
 		//~DFL dfl.textbox.TextBox=txtHeight
 		txtHeight = new dfl.textbox.TextBox();
 		txtHeight.name = "txtHeight";
 		txtHeight.text = "900";
 		txtHeight.textAlign = dfl.all.HorizontalAlignment.CENTER;
-		txtHeight.bounds = dfl.all.Rect(1208, 8, 48, 24);
+		txtHeight.bounds = dfl.all.Rect(1228, 8, 40, 24);
 		txtHeight.parent = this;
 		//~DFL dfl.listbox.ListBox=lbxFiles
 		lbxFiles = new dfl.listbox.ListBox();
@@ -132,51 +132,50 @@ class MainForm : dfl.form.Form
 		label4.name = "label4";
 		label4.text = "rotate:";
 		label4.textAlign = dfl.all.ContentAlignment.MIDDLE_RIGHT;
-		label4.bounds = dfl.all.Rect(616, 8, 44, 24);
+		label4.bounds = dfl.all.Rect(560, 8, 44, 24);
 		label4.parent = this;
 		//~DFL dfl.button.Button=btnTurnLeft
 		btnTurnLeft = new dfl.button.Button();
 		btnTurnLeft.name = "btnTurnLeft";
 		btnTurnLeft.text = "L";
-		btnTurnLeft.bounds = dfl.all.Rect(664, 8, 27, 24);
+		btnTurnLeft.bounds = dfl.all.Rect(608, 8, 27, 24);
 		btnTurnLeft.parent = this;
 		//~DFL dfl.button.Button=btnTurnRight
 		btnTurnRight = new dfl.button.Button();
 		btnTurnRight.name = "btnTurnRight";
 		btnTurnRight.text = "R";
-		btnTurnRight.bounds = dfl.all.Rect(696, 8, 27, 24);
+		btnTurnRight.bounds = dfl.all.Rect(640, 8, 27, 24);
 		btnTurnRight.parent = this;
-		//~DFL dfl.label.Label=label5
-		label5 = new dfl.label.Label();
-		label5.name = "label5";
-		label5.text = "horizon:";
-		label5.textAlign = dfl.all.ContentAlignment.MIDDLE_RIGHT;
-		label5.bounds = dfl.all.Rect(744, 8, 44, 24);
-		label5.parent = this;
-		//~DFL dfl.button.Button=btnHorizonClear
-		btnHorizonClear = new dfl.button.Button();
-		btnHorizonClear.name = "btnHorizonClear";
-		btnHorizonClear.text = "Clear";
-		btnHorizonClear.bounds = dfl.all.Rect(800, 8, 48, 24);
-		btnHorizonClear.parent = this;
+		//~DFL dfl.button.Button=btnUndoAll
+		btnUndoAll = new dfl.button.Button();
+		btnUndoAll.name = "btnUndoAll";
+		btnUndoAll.text = "Undo All";
+		btnUndoAll.bounds = dfl.all.Rect(984, 8, 56, 24);
+		btnUndoAll.parent = this;
 		//~DFL dfl.button.Button=btnHorizonLineup
 		btnHorizonLineup = new dfl.button.Button();
 		btnHorizonLineup.name = "btnHorizonLineup";
-		btnHorizonLineup.text = "Line up";
-		btnHorizonLineup.bounds = dfl.all.Rect(856, 8, 48, 24);
+		btnHorizonLineup.text = "Horizon";
+		btnHorizonLineup.bounds = dfl.all.Rect(688, 8, 48, 24);
 		btnHorizonLineup.parent = this;
 		//~DFL dfl.button.Button=btnCrop
 		btnCrop = new dfl.button.Button();
 		btnCrop.name = "btnCrop";
 		btnCrop.text = "Crop";
-		btnCrop.bounds = dfl.all.Rect(920, 8, 48, 24);
+		btnCrop.bounds = dfl.all.Rect(744, 8, 48, 24);
 		btnCrop.parent = this;
 		//~DFL dfl.button.Button=btnAuto
 		btnAuto = new dfl.button.Button();
 		btnAuto.name = "btnAuto";
-		btnAuto.text = "Auto";
-		btnAuto.bounds = dfl.all.Rect(980, 8, 48, 24);
+		btnAuto.text = "AutoLevel";
+		btnAuto.bounds = dfl.all.Rect(808, 8, 64, 24);
 		btnAuto.parent = this;
+		//~DFL dfl.button.Button=btnUndo
+		btnUndo = new dfl.button.Button();
+		btnUndo.name = "btnUndo";
+		btnUndo.text = "Undo";
+		btnUndo.bounds = dfl.all.Rect(920, 8, 48, 24);
+		btnUndo.parent = this;
 		//~Entice Designer 0.8.5.02 code ends here.
 
 		btnBrowse.click ~= &OnBrowse;
@@ -200,20 +199,22 @@ class MainForm : dfl.form.Form
 		picBox.mouseLeave ~= &OnMouseUp;
 		picBox.paint ~= &PaintMarks;
 		this.closed ~= &OnClose;
-		btnHorizonClear.click ~= &OnClearMarks;
+		btnUndoAll.click ~= &OnUndoAll;
+		btnUndo.click ~= &OnUndo;
 		btnHorizonLineup.click ~= &LineUpHorizon;
 		btnCrop.click ~= &OnCrop;
 		btnAuto.click ~= &OnAutoLevels;
 		this.resize ~= &OnResize;
 
-		Control[] cs = [lbxFiles, this, picBox, btnHorizonClear, btnHorizonLineup, btnSave, btnZoom, btnBrowse, btnCrop];
+		Control[] cs = [lbxFiles, this, picBox, btnUndoAll, btnHorizonLineup, btnSave, btnZoom, btnBrowse, btnCrop];
 		foreach(c; cs) c.keyPress ~= &OnKey;
 
 		toolTip = new ToolTip;
 		toolTip.setToolTip(btnSave, "Save current image (G)");
 		toolTip.setToolTip(btnTurnLeft, "Turn 90° left (L)");
 		toolTip.setToolTip(btnTurnRight, "Turn 90° right (R)");
-		toolTip.setToolTip(btnHorizonClear, "Clear marks (ESC)");
+		toolTip.setToolTip(btnUndoAll, "Re-read the file");
+		toolTip.setToolTip(btnUndo, "Undo last operation");
 		toolTip.setToolTip(btnHorizonLineup, "Rotate the image to make marks on one horizontal line (H)");
 		toolTip.setToolTip(btnZoom, "Switch between 100% fit and 1:1 scales (Z)");
 		toolTip.setToolTip(btnCrop, "Crop (C)");
@@ -430,6 +431,16 @@ private:
 			picBox.sizeMode = PictureBoxSizeMode.CENTER_IMAGE;
 		else
 			picBox.sizeMode = PictureBoxSizeMode.STRETCH_IMAGE;
+	}
+
+	void OnUndo(Control sender, EventArgs ea)
+	{
+		if (imgProc.Undo())  ShowImage(imgProc.current);
+	}
+
+	void OnUndoAll(Control sender, EventArgs ea)
+	{
+		if (imgProc.UndoAll())  ShowImage(imgProc.current);
 	}
 
 	void OnMouseDown(Control c, MouseEventArgs ma)
