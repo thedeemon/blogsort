@@ -15,7 +15,6 @@ class CachedImage
 class Pic : CachedImage
 {
 	Bitmap bmp;
-	double[] cropped;
 
 	this(string filename, Bitmap bitmap, int req = 0)
 	{
@@ -26,7 +25,6 @@ class Pic : CachedImage
 	{
 		if (bmp) delete bmp;
 		bmp = b;
-		cropped = [];
 	}
 	override void dispose() { if (bmp) delete bmp; }
 	override void dispose() shared { if (bmp) delete bmp; }
@@ -73,7 +71,17 @@ class JPrepare : Job //read and resize to blogsize
 {
 	int angle;
 	double fangle;
-	this(string filename, int rotation, double frot) { super(Priority.Soon, filename); angle = rotation; fangle = frot; }
+	bool autolevel;
+	this(string filename, Transformations ts) 
+	{ 
+		super(Priority.Soon, filename); 
+		//angle = rotation; fangle = frot; 
+		if (ts is null) {
+			angle = 0; fangle = 0; autolevel = false;
+		} else {
+			angle = ts.cur.rotations90; fangle = ts.cur.fine_rotation; autolevel = ts.cur.autolevel;
+		}
+	}
 	override string toString() const { return "Prepare " ~ fname; }
 }
 
@@ -237,10 +245,7 @@ Picture ReadPicture(string fname)
 Bitmap ReadBitmap(string fname)
 {
 	auto pic = cast(Picture) ReadPicture(fname);
-	if (pic) {		
-		return pic.toBitmap();
-	} else
-		return RedPic(100,100);
+	return pic !is null ? pic.toBitmap() : RedPic(100,100);
 }
 
 shared(Bitmap) ResizeToThumb(Picture pic)
@@ -455,6 +460,75 @@ bool InsideRect(Vec p, ref Vec[4] ps) pure
 	return (s[0] == s[1] && s[2] == s[3] && s[1] == s[2]);		
 }
 
+class Transformations
+{
+	import std.container;
+	class State {
+		int rotations90;
+		double fine_rotation;
+		double[] cropped;
+		bool autolevel;
+
+		this() {  fine_rotation = 0; rotations90 = 0; autolevel = false; }
+		this(State a, bool keep_cropping = false) 
+		{
+			rotations90 = a.rotations90;
+			fine_rotation = a.fine_rotation;
+			if (keep_cropping)
+				cropped = a.cropped.dup;
+			autolevel = a.autolevel;
+		}
+	}
+
+	SList!State states;
+
+	@property State cur() { return states.front; }
+
+	this() 
+	{
+		states.insert(new State());
+	}
+	
+	void Turn90(int delta) 
+	{  
+		auto s = new State(cur);
+		s.rotations90 += delta; 
+		states.insert(s);
+	}
+	void FineRotate(double ang) 
+	{ 
+		auto s = new State(cur);
+		s.fine_rotation += ang;
+		states.insert(s);
+	}
+	void Crop(double[] crp)
+	{
+		auto s = new State(cur);
+		s.cropped = crp;
+		states.insert(s);
+	}
+	void AutoLevel()
+	{
+		if (cur.autolevel) return;
+		auto s = new State(cur, true);
+		s.autolevel = true;
+		states.insert(s);
+	}
+
+	bool Undo()
+	{
+		if (walkLength(states[]) < 2) return false;
+		states.removeFront();
+		return true;
+	}
+
+	void Clear()
+	{
+		states.clear();
+		states.insert(new State());
+	}
+}
+
 class ImageProcessor
 {
 	static shared int maxOutX = 1200;
@@ -529,10 +603,10 @@ class ImageProcessor
 			if (!used[i] && processed[i]) delete processed[i].bmp;
 			processed[i] = pix[i];
 		}
-		int rot(string name) { return rotations.get(name, 0); }
-		double frot(string name) { return fine_rotations.get(name, 0.0); }
-		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile, rot(nextFile), frot(nextFile)));
-		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile, rot(prevFile), frot(prevFile)));
+		int rot(string name) { return name in tfms ? tfms[name].cur.rotations90 : 0; }
+		double frot(string name) { return name in tfms ? tfms[name].cur.fine_rotation : 0.0; }
+		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile, tfms.get(nextFile, null)));
+		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile, tfms.get(prevFile, null)));
 		if (processed[1] is null) {	//prepare now
 			auto turned = Prepare(curFile);
 			auto bmp = ResizeForBlog( turned );
@@ -578,11 +652,10 @@ class ImageProcessor
 	{
 		if (processed[1] is null || processed[1].bmp is null) return false;
 		auto srcbmp = ReadBitmap(processed[1].fname);
-		auto turned = ApplyRotation(srcbmp, processed[1].fname);
-		if (processed[1].fname in fine_rotations) 
-			angle += fine_rotations[processed[1].fname];
-		fine_rotations[processed[1].fname] = angle;
-		auto rotated = FineRotate(turned, angle);
+		auto tfs = Trans(processed[1].fname);
+		auto turned = ApplyRotation90(srcbmp, tfs);
+		tfs.FineRotate(angle);
+		auto rotated = FineRotate(turned, tfs.cur.fine_rotation);
 		processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(rotated) );
 		return true;
 	}
@@ -607,7 +680,8 @@ class ImageProcessor
 		auto sbmp = Prepare(processed[1].fname);
 		int w0 = sbmp.width, h0 = sbmp.height;
 
-		auto old = processed[1].cropped;
+		auto tfs = Trans(processed[1].fname);
+		auto old = tfs.cur.cropped;
 		if (old.length > 0) { 
 			dx0 = old[0] + (old[2] - old[0]) * dx0;
 			dy0 = old[1] + (old[3] - old[1]) * dy0;
@@ -631,7 +705,7 @@ class ImageProcessor
 		auto bmp = new Bitmap(hbm, true);	
 		auto rbmp = cast(Bitmap) ResizeForBlog(bmp);
 		processed[1].ReplaceBmp(rbmp);
-		processed[1].cropped = [dx0,dy0,dx1,dy1];
+		tfs.Crop([dx0,dy0,dx1,dy1]);
 		delete src; delete dst;
 		return rbmp;
 	}
@@ -699,30 +773,29 @@ private:
 	Bitmap Prepare(string fname) // read and rotate, do not resize yet
 	{
 		auto srcbmp = ReadBitmap(fname);
-		auto turned = ApplyRotation(srcbmp, fname);
-		if (fname in fine_rotations) {
-			auto rotated = FineRotate(turned, fine_rotations[fname]);
+		auto tfs = Trans(fname);
+		auto turned = ApplyRotation90(srcbmp, tfs);
+		auto fangle = tfs.cur.fine_rotation;
+		if (fangle != 0.0) {
+			auto rotated = FineRotate(turned, fangle);
 			delete turned;
 			turned = rotated;
 		}
 		return turned;
 	}
 
-	Bitmap ApplyRotation(Bitmap srcbmp, string fname)
+	Bitmap ApplyRotation90(Bitmap srcbmp, Transformations tfs)
 	{
-		if (fname !in rotations) return srcbmp;
-		return Rotate( srcbmp, rotations[fname] );
+		return Rotate( srcbmp, tfs.cur.rotations90 );
 	}
 
 	bool Turn90(int angle_delta)
 	{
 		if (processed[1] is null || processed[1].bmp is null) return false;
-		int angle = angle_delta;
-		if (processed[1].fname in rotations)
-			angle += rotations[processed[1].fname];		
-		auto srcbmp = ReadBitmap(processed[1].fname);
-		rotations[processed[1].fname] = angle;
-		auto turned = ApplyRotation(srcbmp, processed[1].fname);
+		auto tfs = Trans(processed[1].fname);
+		tfs.Turn90(angle_delta);
+		auto srcbmp = ReadBitmap(processed[1].fname);		
+		auto turned = ApplyRotation90(srcbmp, tfs);
 		processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(turned) );
 		return true;
 	}
@@ -882,6 +955,13 @@ private:
 		}
 	}
 
+	Transformations Trans(string fname)
+	{
+		if (fname !in tfms) 
+			tfms[fname] = new Transformations();
+		return tfms[fname];
+	}
+
 	Pic[string] thumb_cache;
 	int req_no = 0;
 	Tid[] workers;
@@ -891,7 +971,8 @@ private:
 	Pic[3] processed;
 	string[3] requested;
 	JpegWriter jpgWriter;
-	int[string] rotations;
-	double[string] fine_rotations;
+	//int[string] rotations;
+	//double[string] fine_rotations;
+	Transformations[string] tfms;
 	string[string] timestamps;
 }
