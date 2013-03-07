@@ -75,12 +75,7 @@ class JPrepare : Job //read and resize to blogsize
 	this(string filename, Transformations ts) 
 	{ 
 		super(Priority.Soon, filename); 
-		//angle = rotation; fangle = frot; 
-		if (ts is null) {
-			angle = 0; fangle = 0; autolevel = false;
-		} else {
-			angle = ts.cur.rotations90; fangle = ts.cur.fine_rotation; autolevel = ts.cur.autolevel;
-		}
+		angle = ts.cur.rotations90; fangle = ts.cur.fine_rotation; autolevel = ts.cur.autolevel;
 	}
 	override string toString() const { return "Prepare " ~ fname; }
 }
@@ -390,6 +385,32 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 	return new shared(Bitmap)(hbm, true);
 }
 
+bool AutoLevel(Bitmap bmp)
+{
+	int w = bmp.width, h = bmp.height;
+	ubyte[] data;
+	immutable sz = w * h * 4; 
+	data.length = sz;
+	auto res = GetBitmapBits(bmp.handle, data.length, data.ptr);
+	assert(res==sz);
+	int mn = 255, mx = 0;//, i = 0;
+	foreach(i; iota(0, sz, 4)) {
+		foreach(c; data[i..i+3]) {
+			if (c < mn) mn = c;
+			if (c > mx) mx = c;
+		}			
+	}		
+	if (mx <= mn || (mn==0 && mx==255)) return false;		
+	ubyte[256] tab;
+	foreach(x; mn..mx+1) 
+		tab[x] = cast(ubyte) ((x - mn) * 255 / (mx-mn));		
+	foreach(i; iota(0, sz, 4)) 
+		foreach(ref x; data[i..i+3]) x = tab[x];		
+	SetBitmapBits(bmp.handle, sz, data.ptr);
+	delete data;		
+	return true;
+}
+
 class Worker
 {
 	this(Tid improcTid)
@@ -426,8 +447,11 @@ class Worker
 				turned = rotated;
 			}
 			auto bmp = ResizeForBlog(turned);
-			if (bmp)
-				iptid.send(Prepared(jprep.fname, bmp));			
+			if (bmp) {
+				if (jprep.autolevel)
+					AutoLevel(cast(Bitmap)bmp);
+				iptid.send(Prepared(jprep.fname, bmp));
+			}
 			return;
 		}
 	}
@@ -603,16 +627,22 @@ class ImageProcessor
 			if (!used[i] && processed[i]) delete processed[i].bmp;
 			processed[i] = pix[i];
 		}
-		int rot(string name) { return name in tfms ? tfms[name].cur.rotations90 : 0; }
-		double frot(string name) { return name in tfms ? tfms[name].cur.fine_rotation : 0.0; }
-		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile, tfms.get(nextFile, null)));
-		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile, tfms.get(prevFile, null)));
+		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile, Trans(nextFile)));
+		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile, Trans(prevFile)));
 		if (processed[1] is null) {	//prepare now
 			auto turned = Prepare(curFile);
-			auto bmp = ResizeForBlog( turned );
-			processed[1] = new Pic(curFile, cast(Bitmap)bmp);			
+			auto bmp = ResizeAndAdjust(turned, Trans(curFile));
+			processed[1] = new Pic(curFile, bmp);			
 		}
 		return processed[1].bmp;
+	}
+
+	Bitmap ResizeAndAdjust(Bitmap turned, Transformations tfs)
+	{
+		auto bmp = cast(Bitmap) ResizeForBlog( turned );
+		if (tfs.cur.autolevel)
+			AutoLevel(bmp);
+		return bmp;
 	}
 
 	bool SaveCurrent(string fname, out string orgname)
@@ -650,9 +680,10 @@ class ImageProcessor
 	bool Undo()
 	{
 		if (processed[1] is null || processed[1].bmp is null) return false;
-		if (Trans(processed[1].fname).Undo()) {
+		auto tfs = Trans(processed[1].fname);
+		if (tfs.Undo()) {
 			auto turned = Prepare(processed[1].fname);
-			processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(turned) );
+			processed[1].ReplaceBmp( ResizeAndAdjust(turned, tfs) );
 			return true;
 		} else
 			return false;
@@ -670,9 +701,10 @@ class ImageProcessor
 	bool FineRotation(double angle)
 	{
 		if (processed[1] is null || processed[1].bmp is null) return false;
-		Trans(processed[1].fname).FineRotate(angle);
+		auto tfs = Trans(processed[1].fname);
+		tfs.FineRotate(angle);
 		auto rotated = Prepare(processed[1].fname);
-		processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(rotated) );
+		processed[1].ReplaceBmp( ResizeAndAdjust(rotated, tfs) );
 		return true;
 	}
 
@@ -719,7 +751,7 @@ class ImageProcessor
 		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
 		SetBitmapBits(hbm, dst.length*4, dst.ptr);
 		auto bmp = new Bitmap(hbm, true);	
-		auto rbmp = cast(Bitmap) ResizeForBlog(bmp);
+		auto rbmp = ResizeAndAdjust(bmp, tfs);
 		processed[1].ReplaceBmp(rbmp);
 		tfs.Crop([dx0,dy0,dx1,dy1]);
 		delete src; delete dst;
@@ -760,28 +792,8 @@ class ImageProcessor
 	bool AutoLevels()
 	{
 		if (processed[1] is null || processed[1].bmp is null) return false;
-		int w = processed[1].bmp.width, h = processed[1].bmp.height;
-		ubyte[] data;
-		immutable sz = w * h * 4; 
-		data.length = sz;
-		auto res = GetBitmapBits(processed[1].bmp.handle, data.length, data.ptr);
-		assert(res==sz);
-		int mn = 255, mx = 0;//, i = 0;
-		foreach(i; iota(0, sz, 4)) {
-			foreach(c; data[i..i+3]) {
-				if (c < mn) mn = c;
-				if (c > mx) mx = c;
-			}			
-		}		
-		if (mx <= mn || (mn==0 && mx==255)) return false;		
-		ubyte[256] tab;
-		foreach(x; mn..mx+1) 
-			tab[x] = cast(ubyte) ((x - mn) * 255 / (mx-mn));		
-		foreach(i; iota(0, sz, 4)) 
-			foreach(ref x; data[i..i+3]) x = tab[x];		
-		SetBitmapBits(processed[1].bmp.handle, sz, data.ptr);
-		delete data;		
-		return true;
+		Trans(processed[1].fname).AutoLevel();
+		return AutoLevel(processed[1].bmp);
 	}
 
 private:
@@ -808,9 +820,10 @@ private:
 	bool Turn90(int angle_delta)
 	{
 		if (processed[1] is null || processed[1].bmp is null) return false;
-		Trans(processed[1].fname).Turn90(angle_delta);
+		auto tfs = Trans(processed[1].fname);
+		tfs.Turn90(angle_delta);
 		auto turned = Prepare(processed[1].fname);
-		processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(turned) );
+		processed[1].ReplaceBmp( ResizeAndAdjust(turned, tfs) );
 		return true;
 	}
 
