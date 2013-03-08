@@ -567,6 +567,7 @@ class Transformations
 			dy1 = old[1] + (old[3] - old[1]) * dy1;		
 		}
 		s.cropped = [dx0,dy0,dx1,dy1];
+		s.autolevel = false;
 		states.insert(s);
 	}
 	void AutoLevel()
@@ -595,6 +596,18 @@ class ImageProcessor
 {
 	static shared int maxOutX = 1200;
 	static shared int maxOutY = 900;	
+
+	bool ChangeOutSize(int w, int h)
+	{
+		if (w == maxOutX && h == maxOutY) return false;
+		maxOutX = w;	maxOutY = h;
+		if (processed[1] is null || processed[1].bmp is null) return false;
+		auto tfs = Trans(processed[1].fname);		
+		auto rotated = Prepare(processed[1].fname);
+		processed[1].ReplaceBmp( ResizeAndAdjust(rotated, tfs) );
+		return true;
+	}
+
 
 	Bitmap GetThumb(string fname)
 	{

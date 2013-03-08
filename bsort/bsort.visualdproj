@@ -140,7 +140,7 @@
   <otherDMD>0</otherDMD>
   <program>$(DMDInstallDir)windows\bin\dmd.exe</program>
   <imppath>C:\D\dmd2\import</imppath>
-  <fileImppath />
+  <fileImppath>.</fileImppath>
   <outdir>$(ConfigurationName)</outdir>
   <objdir>$(OutDir)</objdir>
   <objname />
@@ -189,6 +189,7 @@
  <Folder name="bsort">
   <File path="bsform.d" />
   <File path="config.d" />
+  <File path="help.d" />
   <File path="ImageProcessor.d" />
   <File path="jpg.d" />
   <File path="winmain.d" />

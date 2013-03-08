@@ -19,6 +19,14 @@ class FileItem
 	string fullname, name;
 }
 
+class MyPictureBox : PictureBox {
+	void BecomeOpaque()
+	{
+		setStyle(ControlStyles.OPAQUE, true);
+	}
+}
+
+
 class MainForm : dfl.form.Form
 {
 	// Do not modify or move this block of variables.
@@ -33,7 +41,6 @@ class MainForm : dfl.form.Form
 	dfl.label.Label label3;
 	dfl.textbox.TextBox txtHeight;
 	dfl.listbox.ListBox lbxFiles;
-	dfl.picturebox.PictureBox picBox;
 	dfl.label.Label label4;
 	dfl.button.Button btnTurnLeft;
 	dfl.button.Button btnTurnRight;
@@ -42,15 +49,17 @@ class MainForm : dfl.form.Form
 	dfl.button.Button btnCrop;
 	dfl.button.Button btnAuto;
 	dfl.button.Button btnUndo;
+	dfl.button.Button btnHelp;
 	//~Entice Designer variables end here.
-	
+	MyPictureBox picBox;
+
 	this()
 	{		
 		imgProc = new ImageProcessor(&OnGotThumb);
-		initializeMyForm();				
+		initializeMainForm();				
 	}	
 	
-	private void initializeMyForm()
+	private void initializeMainForm()
 	{
 		// Do not manually modify this function.
 		//~Entice Designer 0.8.5.02 code begins here.
@@ -93,40 +102,34 @@ class MainForm : dfl.form.Form
 		label2.name = "label2";
 		label2.text = "max size:";
 		label2.textAlign = dfl.all.ContentAlignment.MIDDLE_RIGHT;
-		label2.bounds = dfl.all.Rect(1100, 8, 52, 24);
+		label2.bounds = dfl.all.Rect(1076, 8, 60, 24);
 		label2.parent = this;
 		//~DFL dfl.textbox.TextBox=txtWidth
 		txtWidth = new dfl.textbox.TextBox();
 		txtWidth.name = "txtWidth";
 		txtWidth.text = "1200";
 		txtWidth.textAlign = dfl.all.HorizontalAlignment.CENTER;
-		txtWidth.bounds = dfl.all.Rect(1164, 8, 40, 24);
+		txtWidth.bounds = dfl.all.Rect(1148, 8, 40, 24);
 		txtWidth.parent = this;
 		//~DFL dfl.label.Label=label3
 		label3 = new dfl.label.Label();
 		label3.name = "label3";
 		label3.text = "x";
 		label3.textAlign = dfl.all.ContentAlignment.MIDDLE_CENTER;
-		label3.bounds = dfl.all.Rect(1212, 8, 12, 24);
+		label3.bounds = dfl.all.Rect(1196, 8, 12, 24);
 		label3.parent = this;
 		//~DFL dfl.textbox.TextBox=txtHeight
 		txtHeight = new dfl.textbox.TextBox();
 		txtHeight.name = "txtHeight";
 		txtHeight.text = "900";
 		txtHeight.textAlign = dfl.all.HorizontalAlignment.CENTER;
-		txtHeight.bounds = dfl.all.Rect(1228, 8, 40, 24);
+		txtHeight.bounds = dfl.all.Rect(1212, 8, 40, 24);
 		txtHeight.parent = this;
 		//~DFL dfl.listbox.ListBox=lbxFiles
 		lbxFiles = new dfl.listbox.ListBox();
 		lbxFiles.name = "lbxFiles";
 		lbxFiles.bounds = dfl.all.Rect(8, 40, 182, 654);
 		lbxFiles.parent = this;
-		//~DFL dfl.picturebox.PictureBox=picBox
-		picBox = new dfl.picturebox.PictureBox();
-		picBox.name = "picBox";
-		picBox.sizeMode = dfl.all.PictureBoxSizeMode.STRETCH_IMAGE;
-		picBox.bounds = dfl.all.Rect(196, 40, 1100, 670);
-		picBox.parent = this;
 		//~DFL dfl.label.Label=label4
 		label4 = new dfl.label.Label();
 		label4.name = "label4";
@@ -168,7 +171,7 @@ class MainForm : dfl.form.Form
 		btnAuto = new dfl.button.Button();
 		btnAuto.name = "btnAuto";
 		btnAuto.text = "AutoLevel";
-		btnAuto.bounds = dfl.all.Rect(808, 8, 64, 24);
+		btnAuto.bounds = dfl.all.Rect(800, 8, 64, 24);
 		btnAuto.parent = this;
 		//~DFL dfl.button.Button=btnUndo
 		btnUndo = new dfl.button.Button();
@@ -176,7 +179,19 @@ class MainForm : dfl.form.Form
 		btnUndo.text = "Undo";
 		btnUndo.bounds = dfl.all.Rect(920, 8, 48, 24);
 		btnUndo.parent = this;
+		//~DFL dfl.button.Button=btnHelp
+		btnHelp = new dfl.button.Button();
+		btnHelp.name = "btnHelp";
+		btnHelp.text = "?";
+		btnHelp.bounds = dfl.all.Rect(1264, 8, 24, 24);
+		btnHelp.parent = this;
 		//~Entice Designer 0.8.5.02 code ends here.
+
+		picBox = new MyPictureBox();
+		picBox.name = "picBox";
+		picBox.sizeMode = dfl.all.PictureBoxSizeMode.STRETCH_IMAGE;
+		picBox.bounds = dfl.all.Rect(196, 40, 1100, 670);
+		picBox.parent = this;
 
 		btnBrowse.click ~= &OnBrowse;
 		btnSave.click ~= &OnSave;
@@ -189,8 +204,8 @@ class MainForm : dfl.form.Form
 		lbxFiles.itemHeight = 130;
 		lbxFiles.sorted = false;
 		lbxFiles.selectedValueChanged ~= &OnSelChanged;
-		txtWidth.keyPress ~= &OnOutSizeChange;
-		txtHeight.keyPress ~= &OnOutSizeChange;
+		//txtWidth.keyPress ~= &OnOutSizeChange;
+		//txtHeight.keyPress ~= &OnOutSizeChange;
 		txtWidth.lostFocus ~= &OnOutSizeChange;
 		txtHeight.lostFocus ~= &OnOutSizeChange;
 		picBox.mouseDown ~= &OnMouseDown;
@@ -204,6 +219,7 @@ class MainForm : dfl.form.Form
 		btnHorizonLineup.click ~= &LineUpHorizon;
 		btnCrop.click ~= &OnCrop;
 		btnAuto.click ~= &OnAutoLevels;
+		btnHelp.click ~= &OnHelp;
 		this.resize ~= &OnResize;
 
 		Control[] cs = [lbxFiles, this, picBox, btnUndoAll, btnHorizonLineup, btnSave, btnZoom, btnBrowse, btnCrop];
@@ -219,6 +235,7 @@ class MainForm : dfl.form.Form
 		toolTip.setToolTip(btnZoom, "Switch between 100% fit and 1:1 scales (Z)");
 		toolTip.setToolTip(btnCrop, "Crop (C)");
 		toolTip.setToolTip(btnAuto, "AutoLevels (A)");
+		toolTip.setToolTip(btnHelp, "Help / About");
 		LoadSettings();
 		ClearMarks();
 	}
@@ -276,6 +293,7 @@ private:
 			}
 			ShowImage( imgProc.FileSelected(prevFile, ofd.fileName, nextFile) );
 		}
+		lbxFiles.focus();
 	}
 
 	void OnSelChanged(ListControl lc, EventArgs ea)
@@ -305,6 +323,7 @@ private:
 		}
 		int w0 = img.width, h0 = img.height, w, h, SX=bounds.width-200, SY=bounds.height-80;
 		LimitSize(w0, h0, SX, SY, w, h);
+		picBox.BecomeOpaque();
 		picBox.image = img;
 		picBox.bounds = dfl.all.Rect(196+SX/2-w/2, 40+SY/2-h/2, w, h);		
 		picBox.invalidate(true);
@@ -318,6 +337,7 @@ private:
 
 	void OnSave(Control sender, EventArgs ea)
 	{
+		scope(exit) lbxFiles.focus();
 		string fname = txtOutFile.text, orgname;
 		if (imgProc.current is null) return; // nothing to save		
 		if (imgProc.curFile in saved) {
@@ -337,7 +357,7 @@ private:
 			txtOutFile.text = nextName(fname);
 			lbxFiles.invalidate(true);
 		} else
-			msgBox("save failed, sorry");		
+			msgBox("save failed, sorry");				
 	}
 
 	void DrawItem(Object sender, DrawItemEventArgs ea)
@@ -405,11 +425,15 @@ private:
 	void OnTurnLeft(Control sender, EventArgs ea)
 	{
 		if (imgProc.TurnLeft())  ShowImage(imgProc.current);
+		ClearMarks();
+		lbxFiles.focus();
 	}
 
 	void OnTurnRight(Control sender, EventArgs ea)
 	{
 		if (imgProc.TurnRight())  ShowImage(imgProc.current);
+		ClearMarks();
+		lbxFiles.focus();
 	}
 
 	void OnOutSizeChange(Control c, EventArgs k)
@@ -418,10 +442,9 @@ private:
 			int w = to!int(txtWidth.text);
 			int h = to!int(txtHeight.text);
 			version(verbose) writeln("new target size: ",w, "x",h);
-			if (w > 0 && h > 0) {
-				ImageProcessor.maxOutX = w;
-				ImageProcessor.maxOutY = h;
-			}
+			if (w > 0 && h > 0) 
+				if (imgProc.ChangeOutSize(w,h))
+					ShowImage(imgProc.current);
 		} catch(ConvException ex) { }
 	}
 
@@ -431,16 +454,19 @@ private:
 			picBox.sizeMode = PictureBoxSizeMode.CENTER_IMAGE;
 		else
 			picBox.sizeMode = PictureBoxSizeMode.STRETCH_IMAGE;
+		lbxFiles.focus();
 	}
 
 	void OnUndo(Control sender, EventArgs ea)
 	{
 		if (imgProc.Undo())  ShowImage(imgProc.current);
+		lbxFiles.focus();
 	}
 
 	void OnUndoAll(Control sender, EventArgs ea)
 	{
 		if (imgProc.UndoAll())  ShowImage(imgProc.current);
+		lbxFiles.focus();
 	}
 
 	void OnMouseDown(Control c, MouseEventArgs ma)
@@ -523,6 +549,7 @@ private:
 
 	void LineUpHorizon(Control sender, EventArgs ea)
 	{
+		scope(exit) lbxFiles.focus();
 		foreach(m; horMarks) if (m.x==0 && m.y==0) return;
 		if (horMarks[0].x == horMarks[1].x || horMarks[0].y == horMarks[1].y) return;
 		int i = 0;
@@ -538,6 +565,7 @@ private:
 
 	void OnCrop(Control sender, EventArgs ea)
 	{
+		scope(exit) lbxFiles.focus();
 		if (picBox.image is null) return;
 		foreach(m; cropMarks) if (m.x < 0) return;
 		int x0 = min(cropMarks[0].x, cropMarks[1].x);
@@ -564,6 +592,7 @@ private:
 	void OnAutoLevels(Control sender, EventArgs ea)
 	{		
 		if (imgProc.AutoLevels())  ShowImage(imgProc.current);
+		lbxFiles.focus();
 	}
 
 	void OnResize(Control,EventArgs)
@@ -580,6 +609,14 @@ private:
 		if (n != n0) {
 			lbxFiles.bounds = dfl.all.Rect(8, 40, 182, n*130+2);
 		}		
+	}
+
+	void OnHelp(Control sender, EventArgs ea)
+	{
+		import help;
+		auto frm = new Help();
+		frm.showDialog();
+		lbxFiles.focus();
 	}
 
 	ImageProcessor imgProc;
