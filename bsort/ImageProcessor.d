@@ -539,13 +539,21 @@ class Transformations
 	void Turn90(int delta) 
 	{  
 		auto s = new State(cur);
-		s.rotations90 += delta; 
+		if (s.fine_rotation != 0.0) {
+			s.fine_rotation += delta * PI_2;
+		} else
+			s.rotations90 += delta; 
 		states.insert(s);
 	}
 	void FineRotate(double ang) 
 	{ 
 		auto s = new State(cur);
 		s.fine_rotation += ang;
+		auto a90 = s.rotations90 & 3;
+		if (a90 != 0) {
+			s.fine_rotation += a90 * PI_2;
+			s.rotations90 = 0;
+		}
 		states.insert(s);
 	}
 	void Crop(double dx0, double dy0, double dx1, double dy1)
@@ -749,7 +757,10 @@ class ImageProcessor
 			case 3: turned = TurnBitmap!("(h0-1-x)*w0 + y")( srcbmp ); break;
 			default:
 		}		
-		if (angle & 3) delete srcbmp;
+		if (angle & 3) { 
+			delete srcbmp;
+			version(verbose) writeln("Rotated90");
+		}
 		return turned;
 	}
 
