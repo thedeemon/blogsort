@@ -390,6 +390,7 @@ bool AutoLevel(Bitmap bmp)
 	ubyte[] data;
 	immutable sz = w * h * 4; 
 	data.length = sz;
+	scope(exit) delete data;
 	auto res = GetBitmapBits(bmp.handle, data.length, data.ptr);
 	assert(res==sz);
 	int mn = 255, mx = 0;//, i = 0;
@@ -405,8 +406,7 @@ bool AutoLevel(Bitmap bmp)
 		tab[x] = cast(ubyte) ((x - mn) * 255 / (mx-mn));		
 	foreach(i; iota(0, sz, 4)) 
 		foreach(ref x; data[i..i+3]) x = tab[x];		
-	SetBitmapBits(bmp.handle, sz, data.ptr);
-	delete data;		
+	SetBitmapBits(bmp.handle, sz, data.ptr);	
 	return true;
 }
 
@@ -428,6 +428,7 @@ Bitmap CropBitmap(Bitmap sbmp, double[] dxy)
 	}
 	HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
 	SetBitmapBits(hbm, dst.length*4, dst.ptr);
+	delete sbmp;
 	return new Bitmap(hbm, true);	
 }
 
@@ -462,11 +463,8 @@ class Worker
 			auto srcbmp = ReadBitmap(jprep.fname);
 			auto tf = jprep.tfs.cur;
 			auto turned = ImageProcessor.Rotate( srcbmp, tf.rotations90 );
-			if (abs(tf.fine_rotation) > 0.0001) {
-				auto rotated = ImageProcessor.FineRotate(turned, tf.fine_rotation);
-				delete turned;
-				turned = rotated;
-			}
+			if (abs(tf.fine_rotation) > 0.0001) 
+				turned = ImageProcessor.FineRotate(turned, tf.fine_rotation);			
 			if (tf.cropped.length > 0)
 				turned = CropBitmap(turned, tf.cropped);
 			auto bmp = ResizeForBlog(turned);
@@ -834,11 +832,8 @@ private:
 		auto tfs = Trans(fname);
 		auto turned = ApplyRotation90(srcbmp, tfs);
 		auto fangle = tfs.cur.fine_rotation;
-		if (fangle != 0.0) {
-			auto rotated = FineRotate(turned, fangle);
-			delete turned;
-			turned = rotated;
-		}
+		if (fangle != 0.0) 
+			turned = FineRotate(turned, fangle);		
 		return turned;
 	}
 
@@ -976,6 +971,7 @@ private:
 		SetBitmapBits(hbm, dst.length*4, dst.ptr);
 		delete src;
 		delete dst;
+		delete turned;
 		return new Bitmap(hbm, true);
 	}
 
