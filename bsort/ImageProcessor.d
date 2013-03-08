@@ -69,13 +69,12 @@ class JGetThumb : Job
 
 class JPrepare : Job //read and resize to blogsize
 {
-	int angle;
-	double fangle;
-	bool autolevel;
+	Transformations tfs;
+
 	this(string filename, Transformations ts) 
 	{ 
 		super(Priority.Soon, filename); 
-		angle = ts.cur.rotations90; fangle = ts.cur.fine_rotation; autolevel = ts.cur.autolevel;
+		tfs = ts;
 	}
 	override string toString() const { return "Prepare " ~ fname; }
 }
@@ -411,6 +410,27 @@ bool AutoLevel(Bitmap bmp)
 	return true;
 }
 
+Bitmap CropBitmap(Bitmap sbmp, double[] dxy)
+{
+	int w0 = sbmp.width, h0 = sbmp.height;
+	int x0 = cast(int)(dxy[0] * w0), y0 = cast(int)(dxy[1] * h0);
+	int x1 = cast(int)(dxy[2] * w0), y1 = cast(int)(dxy[3] * h0);
+	int w = x1 - x0, h = y1 - y0;
+	int[] src, dst;
+	src.length = w0 * h0;
+	dst.length = w * h;
+	scope(exit) { delete src; delete dst; }
+	GetBitmapBits(sbmp.handle, src.length*4, src.ptr);
+	foreach(y; 0..h) {
+		int si = (y + y0) * w0 + x0;
+		int di = y * w;
+		dst[di..di+w] = src[si..si+w];			
+	}
+	HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
+	SetBitmapBits(hbm, dst.length*4, dst.ptr);
+	return new Bitmap(hbm, true);	
+}
+
 class Worker
 {
 	this(Tid improcTid)
@@ -440,15 +460,18 @@ class Worker
 		auto jprep = cast(JPrepare) job;
 		if (jprep) { //prepare: read and resize to blog size
 			auto srcbmp = ReadBitmap(jprep.fname);
-			auto turned = ImageProcessor.Rotate( srcbmp, jprep.angle );
-			if (abs(jprep.fangle) > 0.0001) {
-				auto rotated = ImageProcessor.FineRotate(turned, jprep.fangle);
+			auto tf = jprep.tfs.cur;
+			auto turned = ImageProcessor.Rotate( srcbmp, tf.rotations90 );
+			if (abs(tf.fine_rotation) > 0.0001) {
+				auto rotated = ImageProcessor.FineRotate(turned, tf.fine_rotation);
 				delete turned;
 				turned = rotated;
 			}
+			if (tf.cropped.length > 0)
+				turned = CropBitmap(turned, tf.cropped);
 			auto bmp = ResizeForBlog(turned);
 			if (bmp) {
-				if (jprep.autolevel)
+				if (tf.autolevel)
 					AutoLevel(cast(Bitmap)bmp);
 				iptid.send(Prepared(jprep.fname, bmp));
 			}
@@ -525,10 +548,17 @@ class Transformations
 		s.fine_rotation += ang;
 		states.insert(s);
 	}
-	void Crop(double[] crp)
+	void Crop(double dx0, double dy0, double dx1, double dy1)
 	{
 		auto s = new State(cur);
-		s.cropped = crp;
+		auto old = cur.cropped;
+		if (old.length > 0) { 
+			dx0 = old[0] + (old[2] - old[0]) * dx0;
+			dy0 = old[1] + (old[3] - old[1]) * dy0;
+			dx1 = old[0] + (old[2] - old[0]) * dx1;
+			dy1 = old[1] + (old[3] - old[1]) * dy1;		
+		}
+		s.cropped = [dx0,dy0,dx1,dy1];
 		states.insert(s);
 	}
 	void AutoLevel()
@@ -639,7 +669,8 @@ class ImageProcessor
 
 	Bitmap ResizeAndAdjust(Bitmap turned, Transformations tfs)
 	{
-		auto bmp = cast(Bitmap) ResizeForBlog( turned );
+		auto cbmp = tfs.cur.cropped.length > 0 ? CropBitmap(turned, tfs.cur.cropped) : turned;
+		auto bmp = cast(Bitmap) ResizeForBlog( cbmp );
 		if (tfs.cur.autolevel)
 			AutoLevel(bmp);
 		return bmp;
@@ -725,36 +756,11 @@ class ImageProcessor
 	Bitmap CropCurrent(double dx0, double dy0, double dx1, double dy1) // args in 0..1
 	{
 		if (processed[1] is null || processed[1].bmp is null) return null;
-		auto sbmp = Prepare(processed[1].fname);
-		int w0 = sbmp.width, h0 = sbmp.height;
-
 		auto tfs = Trans(processed[1].fname);
-		auto old = tfs.cur.cropped;
-		if (old.length > 0) { 
-			dx0 = old[0] + (old[2] - old[0]) * dx0;
-			dy0 = old[1] + (old[3] - old[1]) * dy0;
-			dx1 = old[0] + (old[2] - old[0]) * dx1;
-			dy1 = old[1] + (old[3] - old[1]) * dy1;		
-		}
-		int x0 = cast(int)(dx0 * w0), y0 = cast(int)(dy0 * h0);
-		int x1 = cast(int)(dx1 * w0), y1 = cast(int)(dy1 * h0);
-		int w = x1 - x0, h = y1 - y0;
-		int[] src, dst;
-		src.length = w0 * h0;
-		dst.length = w * h;
-		GetBitmapBits(sbmp.handle, src.length*4, src.ptr);
-		foreach(y; 0..h) {
-			int si = (y + y0) * w0 + x0;
-			int di = y * w;
-			dst[di..di+w] = src[si..si+w];			
-		}
-		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
-		SetBitmapBits(hbm, dst.length*4, dst.ptr);
-		auto bmp = new Bitmap(hbm, true);	
-		auto rbmp = ResizeAndAdjust(bmp, tfs);
+		tfs.Crop(dx0, dy0, dx1, dy1);
+		auto sbmp = Prepare(processed[1].fname);		
+		auto rbmp = ResizeAndAdjust(sbmp, tfs);
 		processed[1].ReplaceBmp(rbmp);
-		tfs.Crop([dx0,dy0,dx1,dy1]);
-		delete src; delete dst;
 		return rbmp;
 	}
 
