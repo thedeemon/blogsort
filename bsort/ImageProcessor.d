@@ -187,7 +187,7 @@ class PictureCache
 	{
 		loading_pics.remove(name);
 		pic_req_no++;				
-		pic_cache[name] = new shared(CachedPicture)(name, pic, pic_req_no);
+		pic_cache[name] = cast(shared) new CachedPicture(name, pic, pic_req_no);
 		if (pic_cache.length > config.pictureCacheSize) {
 			auto tbs = pic_cache.byKey().map!((string name) => tuple(name, pic_cache[name]));
 			auto mp = tbs.minCount!((a,b) => a[1].last_req < b[1].last_req)[0];
@@ -256,7 +256,7 @@ shared(Bitmap) ResizeToThumb(Picture pic)
 	pic.drawStretched(memdc, Rect(0,0, w,h));
 	if(oldbm)
 		SelectObject(memdc, oldbm);		
-	return new shared(Bitmap)(hbm, true);
+	return cast(shared) new Bitmap(hbm, true);
 }
 
 shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
@@ -381,7 +381,7 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 	SetBitmapBits(hbm, data.length, data.ptr);
 	delete data;
 	delete orgbmp;
-	return new shared(Bitmap)(hbm, true);
+	return cast(shared) new Bitmap(hbm, true);
 }
 
 bool AutoLevel(Bitmap bmp)
@@ -615,7 +615,7 @@ class ImageProcessor
 			p.last_req = req_no;
 			return p.bmp;
 		}
-		PostJob(new shared(JGetThumb)(fname, req_no));
+		PostJob(cast(shared) new JGetThumb(fname, req_no));
 		return null;
 	}
 
@@ -676,8 +676,8 @@ class ImageProcessor
 			if (!used[i] && processed[i]) delete processed[i].bmp;
 			processed[i] = pix[i];
 		}
-		if (nextFile && processed[2] is null) PostJob(new shared(JPrepare)(nextFile, Trans(nextFile)));
-		if (prevFile && processed[0] is null) PostJob(new shared(JPrepare)(prevFile, Trans(prevFile)));
+		if (nextFile && processed[2] is null) PostJob(cast(shared) new JPrepare(nextFile, Trans(nextFile)));
+		if (prevFile && processed[0] is null) PostJob(cast(shared) new JPrepare(prevFile, Trans(prevFile)));
 		if (processed[1] is null) {	//prepare now
 			auto turned = Prepare(curFile);
 			auto bmp = ResizeAndAdjust(turned, Trans(curFile));
