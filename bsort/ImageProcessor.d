@@ -384,8 +384,11 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 	return cast(shared) new Bitmap(hbm, true);
 }
 
-bool AutoLevel(Bitmap bmp)
+bool ChangeLevels(Bitmap bmp, bool autoLevel, double gamma)
 {
+	bool changeGamma = abs(gamma - 1.0) > 0.001; 
+	if (!autoLevel && !changeGamma) return false; // nothing to do
+	version(verbose) writeln("ChangeLevels ", autoLevel, " ", gamma);
 	int w = bmp.width, h = bmp.height;
 	ubyte[] data;
 	immutable sz = w * h * 4; 
@@ -393,19 +396,34 @@ bool AutoLevel(Bitmap bmp)
 	scope(exit) delete data;
 	auto res = GetBitmapBits(bmp.handle, data.length, data.ptr);
 	assert(res==sz);
-	int mn = 255, mx = 0;//, i = 0;
-	foreach(i; iota(0, sz, 4)) {
-		foreach(c; data[i..i+3]) {
-			if (c < mn) mn = c;
-			if (c > mx) mx = c;
-		}			
-	}		
-	if (mx <= mn || (mn==0 && mx==255)) return false;		
-	ubyte[256] tab;
-	foreach(x; mn..mx+1) 
-		tab[x] = cast(ubyte) ((x - mn) * 255 / (mx-mn));		
+	ubyte[256] tab, gtab;
+	foreach(x; 0..256) 
+		tab[x] = cast(ubyte) x;
+	if (autoLevel) {
+		int mn = 255, mx = 0;//, i = 0;
+		foreach(i; iota(0, sz, 4)) {
+			foreach(c; data[i..i+3]) {
+				if (c < mn) mn = c;
+				if (c > mx) mx = c;
+			}			
+		}		
+		if (mx <= mn || (mn==0 && mx==255)) 
+			autoLevel = false;
+		else 
+			foreach(x; mn..mx+1) 
+				tab[x] = cast(ubyte) ((x - mn) * 255 / (mx-mn));
+	}
+
+	if (changeGamma)
+		foreach(x; 0..256) {
+			double v = pow(x / 255.0, 1.0 / gamma) * 255;
+			gtab[x] = cast(ubyte) v;
+		}
+	else
+		foreach(x; 0..256) gtab[x] = cast(ubyte) x;
+
 	foreach(i; iota(0, sz, 4)) 
-		foreach(ref x; data[i..i+3]) x = tab[x];		
+		foreach(ref x; data[i..i+3]) x = gtab[tab[x]];
 	SetBitmapBits(bmp.handle, sz, data.ptr);	
 	return true;
 }
@@ -469,8 +487,8 @@ class Worker
 				turned = CropBitmap(turned, tf.cropped);
 			auto bmp = ResizeForBlog(turned);
 			if (bmp) {
-				if (tf.autolevel)
-					AutoLevel(cast(Bitmap)bmp);
+				if (tf.levelsChanged)
+					ChangeLevels(cast(Bitmap)bmp, tf.autolevel, tf.gamma);
 				iptid.send(Prepared(jprep.fname, bmp));
 			}
 			return;
@@ -513,8 +531,9 @@ class Transformations
 		double fine_rotation;
 		double[] cropped;
 		bool autolevel;
+		double gamma; // 1.0 means no correction, gamma > 1 means brighter image
 
-		this() {  fine_rotation = 0; rotations90 = 0; autolevel = false; }
+		this() {  fine_rotation = 0; rotations90 = 0; autolevel = false; gamma = 1.0; }
 		this(State a, bool keep_cropping = false) 
 		{
 			rotations90 = a.rotations90;
@@ -522,7 +541,10 @@ class Transformations
 			if (keep_cropping)
 				cropped = a.cropped.dup;
 			autolevel = a.autolevel;
+			gamma = a.gamma;
 		}
+
+		@property bool levelsChanged() { return autolevel || abs(gamma - 1.0) > 0.001; }
 	}
 
 	SList!State states;
@@ -533,7 +555,7 @@ class Transformations
 	{
 		states.insert(new State());
 	}
-	
+
 	void Turn90(int delta) 
 	{  
 		auto s = new State(cur);
@@ -573,6 +595,13 @@ class Transformations
 		if (cur.autolevel) return;
 		auto s = new State(cur, true);
 		s.autolevel = true;
+		states.insert(s);
+	}
+	void ChangeGamma(double delta) // +- 1/16
+	{
+		if (cur.gamma + delta < 0.001) return; // too low
+		auto s = new State(cur, true);
+		s.gamma += delta;
 		states.insert(s);
 	}
 
@@ -690,8 +719,8 @@ class ImageProcessor
 	{
 		auto cbmp = tfs.cur.cropped.length > 0 ? CropBitmap(turned, tfs.cur.cropped) : turned;
 		auto bmp = cast(Bitmap) ResizeForBlog( cbmp );
-		if (tfs.cur.autolevel)
-			AutoLevel(bmp);
+		if (tfs.cur.levelsChanged)
+			ChangeLevels(bmp, tfs.cur.autolevel, tfs.cur.gamma);
 		return bmp;
 	}
 
@@ -719,12 +748,12 @@ class ImageProcessor
 
 	bool TurnLeft()
 	{
-		return Turn90(1);		
+		return Transform(tfs => tfs.Turn90(1));
 	}
 
 	bool TurnRight()
 	{
-		return Turn90(3);
+		return Transform(tfs => tfs.Turn90(3));
 	}
 
 	bool Undo()
@@ -750,12 +779,7 @@ class ImageProcessor
 
 	bool FineRotation(double angle)
 	{
-		if (processed[1] is null || processed[1].bmp is null) return false;
-		auto tfs = Trans(processed[1].fname);
-		tfs.FineRotate(angle);
-		auto rotated = Prepare(processed[1].fname);
-		processed[1].ReplaceBmp( ResizeAndAdjust(rotated, tfs) );
-		return true;
+		return Transform(tfs => tfs.FineRotate(angle));
 	}
 
 	static Bitmap Rotate(Bitmap srcbmp, int angle)
@@ -819,12 +843,25 @@ class ImageProcessor
 
 	bool AutoLevels()
 	{
-		if (processed[1] is null || processed[1].bmp is null) return false;
-		Trans(processed[1].fname).AutoLevel();
-		return AutoLevel(processed[1].bmp);
+		return Transform(tfs => tfs.AutoLevel());
+	}
+
+	bool ChangeGamma(double delta)
+	{
+		return Transform(tfs => tfs.ChangeGamma(delta));
 	}
 
 private:
+
+	bool Transform(void delegate(Transformations) f)
+	{
+		if (processed[1] is null || processed[1].bmp is null) return false;
+		auto tfs = Trans(processed[1].fname);
+		f(tfs);
+		auto rotated = Prepare(processed[1].fname);
+		processed[1].ReplaceBmp( ResizeAndAdjust(rotated, tfs) );
+		return true;
+	}
 
 	Bitmap Prepare(string fname) // read and rotate, do not resize yet
 	{
@@ -840,16 +877,6 @@ private:
 	Bitmap ApplyRotation90(Bitmap srcbmp, Transformations tfs)
 	{
 		return Rotate( srcbmp, tfs.cur.rotations90 );
-	}
-
-	bool Turn90(int angle_delta)
-	{
-		if (processed[1] is null || processed[1].bmp is null) return false;
-		auto tfs = Trans(processed[1].fname);
-		tfs.Turn90(angle_delta);
-		auto turned = Prepare(processed[1].fname);
-		processed[1].ReplaceBmp( ResizeAndAdjust(turned, tfs) );
-		return true;
 	}
 
 	static Bitmap TurnBitmap(alias coord_calc)(Bitmap bmp)

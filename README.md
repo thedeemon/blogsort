@@ -14,7 +14,9 @@ Keys:
   - H - fine rotate to make horizon marks lie on one horizontal line
   - C - crop to selected area
   - Esc - clear selection and horizon marks
-  - A - auto levels (fix brightness)
+  - A - auto levels (normalise brightness)
+  - + - make image brighter
+  - - - make image darker
   - Z - switch zoom between "fit 100%" and "1:1 output" scales
   - G - save current picture
 

@@ -24,6 +24,8 @@ You can clear current horizon marks and cropping rectangle by pressing ESC.
 * Auto Levels: press keyboard button A or "AutoLevel" window button to 
 normalize image brightness.
 
+* Gamma correction: press +/- to make image brighter/darker.
+
 * Zoom: by pressing Z keyboard button or "Zoom" window button you can switch
 between showing whole image (resized to fit) or showing just central part of
 it but with 1:1 scale (using target size).

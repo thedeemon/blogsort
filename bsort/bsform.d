@@ -416,6 +416,8 @@ private:
 			case 'h': LineUpHorizon(null, null); break;
 			case 'c': OnCrop(null, null); break;
 			case 'a': OnAutoLevels(null, null); break;
+			case '+': ChangeGamma(0.0625); break;
+			case '-': ChangeGamma(-0.0625); break;
 			default : 
 		}		
 		if (k.keyCode == Keys.ESCAPE) OnClearMarks(null, null);
@@ -592,6 +594,12 @@ private:
 	void OnAutoLevels(Control sender, EventArgs ea)
 	{		
 		if (imgProc.AutoLevels())  ShowImage(imgProc.current);
+		lbxFiles.focus();
+	}
+
+	void ChangeGamma(double delta)
+	{
+		if (imgProc.ChangeGamma(delta)) ShowImage(imgProc.current);
 		lbxFiles.focus();
 	}
 
