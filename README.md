@@ -15,8 +15,7 @@ Keys:
   - C - crop to selected area
   - Esc - clear selection and horizon marks
   - A - auto levels (normalise brightness)
-  - + - make image brighter
-  - - - make image darker
+  - "+/-" - make image brighter/darker
   - Z - switch zoom between "fit 100%" and "1:1 output" scales
   - G - save current picture
 
