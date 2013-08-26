@@ -312,7 +312,13 @@ private:
 		int vn = lbxFiles.bounds.height / 130;
 		if (i > 0 && i == top) lbxFiles.topIndex = top - 1;
 		else
-		if (i >= top + vn-1 && top + vn < n) lbxFiles.topIndex = top + 1;
+		if (i >= top + vn-1 && top + vn < n) {
+			lbxFiles.topIndex = top + 1; // top + vn will become visible
+			if (top + vn + 1 < n) {
+				auto nit = cast(FileItem) lbxFiles.items[top + vn + 1];
+				imgProc.IdlePrepareThumb(nit.fullname);
+			}
+		}
 	}
 
 	void ShowImage(Image img)

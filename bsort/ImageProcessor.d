@@ -106,20 +106,27 @@ synchronized class LabourDept
 		foreach(p; 0..4) {
 			if (jobs[p].length > 0) {
 				auto job = jobs[p][0];
-				jobs[p] = jobs[p][1..$];
-				auto j = cast(Job)job;
-				version(verbose) writeln("run job ", j);
+				jobs[p] = jobs[p][1..$];				
+				version(verbose) { auto j = cast(Job)job; writeln("run job ", j); }
 				return job;
 			}
 		}
+		if (idleJob !is null) {
+			auto j = idleJob;
+			idleJob = null;
+			return j;
+		}
 		return null;
 	}
+
+	void SetIdleJob(shared Job job)	{	idleJob = job;	}
 
 	static shared LabourDept dept;
 	static shared bool quit = false;
 
 private:
-	Job[][4] jobs; //4 priorities	
+	Job[][4] jobs; //4 priorities
+	Job idleJob;
 }
 
 void LimitSize(int w0, int h0, int maxX, int maxY, ref int w, ref int h)
@@ -713,6 +720,14 @@ class ImageProcessor
 			processed[1] = new Pic(curFile, bmp);			
 		}
 		return processed[1].bmp;
+	}
+
+	void IdlePrepareThumb(string fullname)
+	{
+		req_no++;
+		LabourDept.dept.SetIdleJob( cast(shared) new JGetThumb(fullname, req_no) );
+		foreach(w; workers)
+			w.send(HaveWork());
 	}
 
 	Bitmap ResizeAndAdjust(Bitmap turned, Transformations tfs)
