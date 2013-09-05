@@ -192,6 +192,6 @@
   <File path="help.d" />
   <File path="ImageProcessor.d" />
   <File path="jpg.d" />
-  <File path="winmain.d" />
+  <File path="main.d" />
  </Folder>
 </DProject>

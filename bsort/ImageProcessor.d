@@ -429,8 +429,11 @@ bool ChangeLevels(Bitmap bmp, bool autoLevel, double gamma)
 	else
 		foreach(x; 0..256) gtab[x] = cast(ubyte) x;
 
+	ubyte[256] ctab;
+	foreach(x; 0..256) 
+		ctab[x] = gtab[tab[x]];
 	foreach(i; iota(0, sz, 4)) 
-		foreach(ref x; data[i..i+3]) x = gtab[tab[x]];
+		foreach(ref x; data[i..i+3]) x = ctab[x];
 	SetBitmapBits(bmp.handle, sz, data.ptr);	
 	return true;
 }
