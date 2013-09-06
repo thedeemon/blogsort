@@ -3,6 +3,22 @@ import dfl.all, std.c.windows.windows, dfl.internal.winapi, std.concurrency, std
 import std.typecons, jpg, config, std.math, std.file, core.thread;
 version(verbose) import std.stdio; 
 
+struct MeasureTime
+{
+	string funname;
+	TickDuration t0;
+	this(string name) { funname = name; t0 = TickDuration.currSystemTick; }
+	~this() {
+		auto dt = TickDuration.currSystemTick - t0;
+		version(verbose) writefln("%s finished in %s ms.", funname, dt.msecs);
+	}
+
+	void mark(string msg) {
+		auto dt = TickDuration.currSystemTick - t0;
+		version(verbose) writefln("%s: %s at %s ms.", funname, msg, dt.msecs);
+	}
+}
+
 class CachedImage
 {
 	int last_req;
@@ -226,6 +242,8 @@ shared PictureCache picCache;
 
 Picture ReadPicture(string fname)
 {
+	version(verbose) auto mt = MeasureTime("ReadPicture "~fname);
+
 	bool already_loading = false;
 	synchronized(picCache) {
 		auto pic = picCache.Get(fname);
@@ -285,6 +303,8 @@ shared(Bitmap) ResizeToThumb(Picture pic)
 
 shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 {
+	version(verbose) auto mt = MeasureTime("ResizeForBlog");
+
 	int h0 = orgbmp.height, w0 = orgbmp.width, w,h;
 	ubyte[] org;
 	int orgsz = w0 * h0 * 4;
@@ -408,23 +428,12 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 	return cast(shared) new Bitmap(hbm, true);
 }
 
-mixin template TimedFun(string funname)
-{
-}
-
 bool ChangeLevels(Bitmap bmp, bool autoLevel, double gamma)
 {
 	bool changeGamma = abs(gamma - 1.0) > 0.001; 
 	if (!autoLevel && !changeGamma) return false; // nothing to do
 	version(verbose) writeln("ChangeLevels ", autoLevel, " ", gamma);
-
-	version(verbose) {
-		auto t0 = core.time.TickDuration.currSystemTick;
-		scope(exit) {
-			auto dt = core.time.TickDuration.currSystemTick - t0;
-			writefln("%s finished in %s ms", "ChangeLevels", dt.msecs);
-		}
-	}
+	version(verbose) auto mt = MeasureTime("ChangeLevels");
 
 	int w = bmp.width, h = bmp.height;
 	ubyte[] data;
@@ -829,6 +838,7 @@ class ImageProcessor
 	static Bitmap Rotate(Bitmap srcbmp, int angle)
 	{
 		Bitmap turned;
+		version(verbose) auto mt = MeasureTime("Rotate90");
 		switch(angle & 3) {
 			case 0: turned = srcbmp; break;
 			case 1: turned = TurnBitmap!("x*w0 + w0-1-y")( srcbmp ); break;
@@ -911,29 +921,37 @@ private:
 
 	Bitmap DoTransformations(string fname, Transformations tfs)
 	{
+		version(verbose) auto mt = MeasureTime("DoTransformations " ~ fname);
+
 		bool bother_with_cache = tfs.cur.levelsChanged;
 		Bitmap bmp = null;
 		if (bother_with_cache) {
 			if (fname == tfm_cache_fname && tfs.cur.prettySame(tfm_cache_state))
 				bmp = CloneBitmap(tfm_cache_bmp);
 		}
+		version(verbose) mt.mark("check cache");
 		if (bmp is null) {
 			auto srcbmp = ReadBitmap(fname);
 			auto turned = ApplyRotation90(srcbmp, tfs);
 			auto fangle = tfs.cur.fine_rotation;
 			if (fangle != 0.0) 
 				turned = FineRotate(turned, fangle);		
+			version(verbose) mt.mark("after rotation");
 			auto cbmp = tfs.cur.cropped.length > 0 ? CropBitmap(turned, tfs.cur.cropped) : turned;
+			version(verbose) mt.mark("cropping");
 			bmp = cast(Bitmap) ResizeForBlog( cbmp );
+			version(verbose) mt.mark("resize");
 
 			if (bother_with_cache && (fname != tfm_cache_fname || !tfs.cur.prettySame(tfm_cache_state))) {
 				ReplaceByCloneOf(tfm_cache_bmp, bmp);
 				tfm_cache_fname = fname;
 				tfm_cache_state = new State(tfs.cur, true);
-			}
+				version(verbose) mt.mark("save to cache");
+			}			
 		}
 		if (tfs.cur.levelsChanged)
 			ChangeLevels(bmp, tfs.cur.autolevel, tfs.cur.gamma);
+		version(verbose) mt.mark("end");
 		return bmp;
 	}
 
