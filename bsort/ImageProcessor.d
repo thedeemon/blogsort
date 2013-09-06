@@ -150,6 +150,23 @@ Bitmap RedPic(int w = 160, int h = 120)
 	return new Bitmap(hbm, true);
 }
 
+Bitmap CloneBitmap(Bitmap src)
+{
+	HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, src.width, src.height);
+	int[] data;
+	data.length = src.width * src.height;
+	GetBitmapBits(src.handle, data.length*4, data.ptr);
+	SetBitmapBits(hbm, data.length*4, data.ptr);
+	delete data;
+	return new Bitmap(hbm, true);
+}
+
+void ReplaceByCloneOf(ref Bitmap old, Bitmap src)
+{
+	if (old !is null) delete old;
+	old = CloneBitmap(src);
+}
+
 class PictureCache
 {
 	CachedPicture[string] pic_cache;
@@ -391,11 +408,24 @@ shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
 	return cast(shared) new Bitmap(hbm, true);
 }
 
+mixin template TimedFun(string funname)
+{
+}
+
 bool ChangeLevels(Bitmap bmp, bool autoLevel, double gamma)
 {
 	bool changeGamma = abs(gamma - 1.0) > 0.001; 
 	if (!autoLevel && !changeGamma) return false; // nothing to do
 	version(verbose) writeln("ChangeLevels ", autoLevel, " ", gamma);
+
+	version(verbose) {
+		auto t0 = core.time.TickDuration.currSystemTick;
+		scope(exit) {
+			auto dt = core.time.TickDuration.currSystemTick - t0;
+			writefln("%s finished in %s ms", "ChangeLevels", dt.msecs);
+		}
+	}
+
 	int w = bmp.width, h = bmp.height;
 	ubyte[] data;
 	immutable sz = w * h * 4; 
@@ -533,30 +563,38 @@ bool InsideRect(Vec p, ref Vec[4] ps) pure
 	return (s[0] == s[1] && s[2] == s[3] && s[1] == s[2]);		
 }
 
+class State {
+	int rotations90;
+	double fine_rotation;
+	double[] cropped;
+	bool autolevel;
+	double gamma; // 1.0 means no correction, gamma > 1 means brighter image
+
+	this() {  fine_rotation = 0; rotations90 = 0; autolevel = false; gamma = 1.0; }
+	this(State a, bool keep_cropping = false) 
+	{
+		rotations90 = a.rotations90;
+		fine_rotation = a.fine_rotation;
+		if (keep_cropping)
+			cropped = a.cropped.dup;
+		autolevel = a.autolevel;
+		gamma = a.gamma;
+	}
+
+	@property bool levelsChanged() { return autolevel || abs(gamma - 1.0) > 0.001; }
+
+	bool prettySame(State a)
+	{
+		if (a is null) return false;
+		bool same(double x, double y) { return abs(x-y) < 0.001; }
+		return rotations90 == a.rotations90 && same(fine_rotation, a.fine_rotation)
+			&& cropped.length == a.cropped.length && zip(cropped, a.cropped).all!(t => same(t[0], t[1]));
+	}
+}
+
 class Transformations
 {
 	import std.container;
-	class State {
-		int rotations90;
-		double fine_rotation;
-		double[] cropped;
-		bool autolevel;
-		double gamma; // 1.0 means no correction, gamma > 1 means brighter image
-
-		this() {  fine_rotation = 0; rotations90 = 0; autolevel = false; gamma = 1.0; }
-		this(State a, bool keep_cropping = false) 
-		{
-			rotations90 = a.rotations90;
-			fine_rotation = a.fine_rotation;
-			if (keep_cropping)
-				cropped = a.cropped.dup;
-			autolevel = a.autolevel;
-			gamma = a.gamma;
-		}
-
-		@property bool levelsChanged() { return autolevel || abs(gamma - 1.0) > 0.001; }
-	}
-
 	SList!State states;
 
 	@property State cur() { return states.front; }
@@ -640,8 +678,7 @@ class ImageProcessor
 		maxOutX = w;	maxOutY = h;
 		if (processed[1] is null || processed[1].bmp is null) return false;
 		auto tfs = Trans(processed[1].fname);		
-		auto rotated = Prepare(processed[1].fname);
-		processed[1].ReplaceBmp( ResizeAndAdjust(rotated, tfs) );
+		processed[1].ReplaceBmp( DoTransformations(processed[1].fname, tfs) );
 		return true;
 	}
 
@@ -718,8 +755,7 @@ class ImageProcessor
 		if (nextFile && processed[2] is null) PostJob(cast(shared) new JPrepare(nextFile, Trans(nextFile)));
 		if (prevFile && processed[0] is null) PostJob(cast(shared) new JPrepare(prevFile, Trans(prevFile)));
 		if (processed[1] is null) {	//prepare now
-			auto turned = Prepare(curFile);
-			auto bmp = ResizeAndAdjust(turned, Trans(curFile));
+			auto bmp = DoTransformations(curFile, Trans(curFile));
 			processed[1] = new Pic(curFile, bmp);			
 		}
 		return processed[1].bmp;
@@ -731,15 +767,6 @@ class ImageProcessor
 		LabourDept.dept.SetIdleJob( cast(shared) new JGetThumb(fullname, req_no) );
 		foreach(w; workers)
 			w.send(HaveWork());
-	}
-
-	Bitmap ResizeAndAdjust(Bitmap turned, Transformations tfs)
-	{
-		auto cbmp = tfs.cur.cropped.length > 0 ? CropBitmap(turned, tfs.cur.cropped) : turned;
-		auto bmp = cast(Bitmap) ResizeForBlog( cbmp );
-		if (tfs.cur.levelsChanged)
-			ChangeLevels(bmp, tfs.cur.autolevel, tfs.cur.gamma);
-		return bmp;
 	}
 
 	bool SaveCurrent(string fname, out string orgname)
@@ -779,8 +806,7 @@ class ImageProcessor
 		if (processed[1] is null || processed[1].bmp is null) return false;
 		auto tfs = Trans(processed[1].fname);
 		if (tfs.Undo()) {
-			auto turned = Prepare(processed[1].fname);
-			processed[1].ReplaceBmp( ResizeAndAdjust(turned, tfs) );
+			processed[1].ReplaceBmp( DoTransformations(processed[1].fname, tfs) );
 			return true;
 		} else
 			return false;
@@ -789,9 +815,9 @@ class ImageProcessor
 	bool UndoAll()
 	{
 		if (processed[1] is null || processed[1].bmp is null) return false;
-		Trans(processed[1].fname).Clear();
-		auto turned = Prepare(processed[1].fname);
-		processed[1].ReplaceBmp( cast(Bitmap) ResizeForBlog(turned) );
+		auto tfs = Trans(processed[1].fname);
+		tfs.Clear();
+		processed[1].ReplaceBmp( DoTransformations(processed[1].fname, tfs) );
 		return true;
 	}
 
@@ -822,8 +848,7 @@ class ImageProcessor
 		if (processed[1] is null || processed[1].bmp is null) return null;
 		auto tfs = Trans(processed[1].fname);
 		tfs.Crop(dx0, dy0, dx1, dy1);
-		auto sbmp = Prepare(processed[1].fname);		
-		auto rbmp = ResizeAndAdjust(sbmp, tfs);
+		auto rbmp = DoTransformations(processed[1].fname, tfs);
 		processed[1].ReplaceBmp(rbmp);
 		return rbmp;
 	}
@@ -876,20 +901,40 @@ private:
 		if (processed[1] is null || processed[1].bmp is null) return false;
 		auto tfs = Trans(processed[1].fname);
 		f(tfs);
-		auto rotated = Prepare(processed[1].fname);
-		processed[1].ReplaceBmp( ResizeAndAdjust(rotated, tfs) );
+		processed[1].ReplaceBmp( DoTransformations(processed[1].fname, tfs) );
 		return true;
 	}
 
-	Bitmap Prepare(string fname) // read and rotate, do not resize yet
+	string tfm_cache_fname;
+	State tfm_cache_state;
+	Bitmap tfm_cache_bmp;
+
+	Bitmap DoTransformations(string fname, Transformations tfs)
 	{
-		auto srcbmp = ReadBitmap(fname);
-		auto tfs = Trans(fname);
-		auto turned = ApplyRotation90(srcbmp, tfs);
-		auto fangle = tfs.cur.fine_rotation;
-		if (fangle != 0.0) 
-			turned = FineRotate(turned, fangle);		
-		return turned;
+		bool bother_with_cache = tfs.cur.levelsChanged;
+		Bitmap bmp = null;
+		if (bother_with_cache) {
+			if (fname == tfm_cache_fname && tfs.cur.prettySame(tfm_cache_state))
+				bmp = CloneBitmap(tfm_cache_bmp);
+		}
+		if (bmp is null) {
+			auto srcbmp = ReadBitmap(fname);
+			auto turned = ApplyRotation90(srcbmp, tfs);
+			auto fangle = tfs.cur.fine_rotation;
+			if (fangle != 0.0) 
+				turned = FineRotate(turned, fangle);		
+			auto cbmp = tfs.cur.cropped.length > 0 ? CropBitmap(turned, tfs.cur.cropped) : turned;
+			bmp = cast(Bitmap) ResizeForBlog( cbmp );
+
+			if (bother_with_cache && (fname != tfm_cache_fname || !tfs.cur.prettySame(tfm_cache_state))) {
+				ReplaceByCloneOf(tfm_cache_bmp, bmp);
+				tfm_cache_fname = fname;
+				tfm_cache_state = new State(tfs.cur, true);
+			}
+		}
+		if (tfs.cur.levelsChanged)
+			ChangeLevels(bmp, tfs.cur.autolevel, tfs.cur.gamma);
+		return bmp;
 	}
 
 	Bitmap ApplyRotation90(Bitmap srcbmp, Transformations tfs)
