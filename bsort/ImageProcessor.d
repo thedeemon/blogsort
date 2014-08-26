@@ -1,6 +1,6 @@
 module imageprocessor;
 import dfl.all, std.c.windows.windows, dfl.internal.winapi, std.concurrency, std.range, core.time, std.algorithm;
-import std.typecons, jpg, config, std.math, std.file, core.thread;
+import std.typecons, jpg, config, std.math, std.file, core.thread, core.atomic;
 version(verbose) import std.stdio; 
 
 struct MeasureTime
@@ -191,7 +191,7 @@ class PictureCache
 
 	Picture Get(string fname) shared
 	{
-		pic_req_no++;
+		atomicOp!"+="(pic_req_no, 1);
 		if (fname in pic_cache) {
 			auto p = pic_cache[fname];
 			p.last_req = pic_req_no;
@@ -226,7 +226,7 @@ class PictureCache
 	synchronized void Loaded(string name, Picture pic) 
 	{
 		loading_pics.remove(name);
-		pic_req_no++;				
+		atomicOp!"+="(pic_req_no, 1);
 		pic_cache[name] = cast(shared) new CachedPicture(name, pic, pic_req_no);
 		if (pic_cache.length > config.pictureCacheSize) {
 			auto tbs = pic_cache.byKey().map!((string name) => tuple(name, pic_cache[name]));

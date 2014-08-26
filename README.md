@@ -27,7 +27,7 @@ DFL (C) 2004-2010 Christopher E. Miller
 IJG JPEG library (C) 1994-2011, Thomas G. Lane, Guido Vollbeding.
 
 ### License
-Copyright (C) 2012-2013 Dmitry Popov, Infognition Co. Ltd.
+Copyright (C) 2012-2014 Dmitry Popov, Infognition Co. Ltd.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy 
 of this software and associated documentation files (the "Software"), to deal 
