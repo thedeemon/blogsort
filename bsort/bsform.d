@@ -1,6 +1,5 @@
 ﻿module bsform;
 import dfl.all, std.string, std.file, std.c.windows.windows, std.conv, jpg, imageprocessor, std.algorithm, std.array, std.math;
-version(verbose) import std.stdio;
 
 class FileItem
 {

@@ -1,7 +1,18 @@
 module imageprocessor;
 import dfl.all, std.c.windows.windows, dfl.internal.winapi, std.concurrency, std.range, core.time, std.algorithm;
 import std.typecons, jpg, config, std.math, std.file, core.thread, core.atomic;
-version(verbose) import std.stdio; 
+
+version(verbose) {    
+    auto writeln(T...)(T args) nothrow {
+        import std.stdio;     
+        try std.stdio.writeln(args); catch (Exception ex) {}
+    }
+
+    auto writefln(T...)(T args) nothrow {
+        import std.stdio; 
+        try std.stdio.writefln(args); catch (Exception ex) {}
+    }
+}
 
 struct MeasureTime
 {
@@ -117,7 +128,7 @@ synchronized class LabourDept
 		}
 	}
 
-	shared(Job) GetJob()
+	shared(Job) GetJob() nothrow
 	{
 		foreach(p; 0..4) {
 			if (jobs[p].length > 0) {
@@ -155,15 +166,20 @@ void LimitSize(int w0, int h0, int maxX, int maxY, ref int w, ref int h)
 	}
 }
 
-Bitmap RedPic(int w = 160, int h = 120)
+Bitmap RedPic(int w = 160, int h = 120) nothrow
 {
-	HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
-	int[] data;
-	data.length = w*h;
-	data[0..$] = 0xFF0000; 
-	SetBitmapBits(hbm, data.length*4, data.ptr);
-	delete data;		
-	return new Bitmap(hbm, true);
+    try {
+	    HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
+	    int[] data;
+	    data.length = w*h;
+	    data[0..$] = 0xFF0000; 
+	    SetBitmapBits(hbm, data.length*4, data.ptr);
+	    delete data;		
+	    return new Bitmap(hbm, true);
+    } catch (Exception ex) {
+        version(verbose) writeln("Exception in RedPic: ", ex);
+        return null;
+    }
 }
 
 Bitmap CloneBitmap(Bitmap src)
@@ -240,8 +256,9 @@ class PictureCache
 
 shared PictureCache picCache;
 
-Picture ReadPicture(string fname)
+Picture ReadPicture(string fname) nothrow
 {
+    try {
 	version(verbose) auto mt = MeasureTime("ReadPicture "~fname);
 
 	bool already_loading = false;
@@ -275,6 +292,9 @@ Picture ReadPicture(string fname)
 			tries++;			
 		}
 	}
+    } catch(Exception ex) {
+        version(verbose) writeln("ReadPicture got exception ", ex);
+    }
 	return null; //completely failed to read
 }
 
@@ -284,8 +304,9 @@ Bitmap ReadBitmap(string fname)
 	return pic !is null ? pic.toBitmap() : RedPic(100,100);
 }
 
-shared(Bitmap) ResizeToThumb(Picture pic)
+shared(Bitmap) ResizeToThumb(Picture pic) nothrow
 {
+    try {
 	Graphics g = Graphics.getScreen();
 	HDC memdc = CreateCompatibleDC(g.handle);
 	if (memdc is null) return null;
@@ -299,133 +320,141 @@ shared(Bitmap) ResizeToThumb(Picture pic)
 	if(oldbm)
 		SelectObject(memdc, oldbm);		
 	return cast(shared) new Bitmap(hbm, true);
+    } catch (Exception ex) {
+        return null;
+    }
 }
 
-shared(Bitmap) ResizeForBlog(Bitmap orgbmp)
+shared(Bitmap) ResizeForBlog(Bitmap orgbmp) nothrow
 {
-	version(verbose) auto mt = MeasureTime("ResizeForBlog");
+    try {
+	    version(verbose) auto mt = MeasureTime("ResizeForBlog");
 
-	int h0 = orgbmp.height, w0 = orgbmp.width, w,h;
-	ubyte[] org;
-	int orgsz = w0 * h0 * 4;
-	org.length = orgsz;	
-	scope(exit) delete org;	
-	auto res = GetBitmapBits(orgbmp.handle, org.length, org.ptr);
-	assert(res==orgsz);
+	    int h0 = orgbmp.height, w0 = orgbmp.width, w,h;
+	    ubyte[] org;
+	    int orgsz = w0 * h0 * 4;
+	    org.length = orgsz;	
+	    scope(exit) delete org;	
+	    auto res = GetBitmapBits(orgbmp.handle, org.length, org.ptr);
+	    assert(res==orgsz);
 
-	LimitSize(w0, h0, ImageProcessor.maxOutX, ImageProcessor.maxOutY, w, h);
-	if (w>=w0 && h>=h0) 
-		return cast(shared(Bitmap))orgbmp;
+	    LimitSize(w0, h0, ImageProcessor.maxOutX, ImageProcessor.maxOutY, w, h);
+	    if (w>=w0 && h>=h0) 
+		    return cast(shared(Bitmap))orgbmp;
 
-	version(verbose) auto tt0 = core.time.TickDuration.currSystemTick;
-	ubyte[] data;
-	data.length = w * h * 4;
-	int[3][] row;
-	row.length = w;
-	real h0h = cast(real) h0 / h, w0w = cast(real) w0 / w, t0, t1;
-	int[] sh0, sh1;
-	int[] aisx0, aisx1;
-	aisx0.length = w; aisx1.length = w; sh0.length = w; sh1.length = w;
-	immutable eps = 1.0 / 256;
-	immutable int kx = cast(int)(256 / w0w + 0.5), ky = cast(int) (256 / h0h + 0.5);
-	foreach(x; 0..w) {
-		real sx0 = x * w0w, sx1 = (x+1) * w0w;
-		aisx0[x] = cast(int) sx0;
-		aisx1[x] = cast(int) sx1;
-		sh0[x] = cast(int) ((1.0 - modf(sx0, t0)) / w0w * 256 + 0.5);
-		int kxarea = (aisx1[x] - aisx0[x] - 1)*kx;
-		if ((sh0[x] + kxarea) > 256)
-			sh0[x] = 256 - kxarea;
-		sh1[x] = 256 - sh0[x] - kxarea;
-		assert(sh0[x] >= 0);
-		assert(kxarea >= 0);
-		assert(sh1[x] >= 0);
-		assert(sh0[x] + kxarea + sh1[x] == 256);
-	}
-	aisx1[$-1] = aisx0[$-1];
-	foreach(y; 0..h) {		
-		/*int sy = y * h0 / h;	//nearest neighbor
-		foreach(x; 0..w) {
-			int sx = x * w0 / w;
-			int si = (sy * w0 + sx) * 4;
-			data[di..di+3] = org[si..si+3];
-			di += 4;
-		}*/
-		real sy0 = h0h * y, sy1 = h0h * (y+1);
-		int isy0 = cast(int) sy0;
-		int isy1 = cast(int) sy1;
-		int ysh0 = cast(int) ((1.0 - std.math.modf(sy0, t0)) / h0h * 256 + 0.5);
-		//int ysh1 = cast(int) (std.math.modf(sy1, t1) / h0h * 256);
-		int kyarea = (isy1 - isy0 - 1) * ky;		
-		if (ysh0 +  kyarea > 256)
-			ysh0 = 256 - kyarea;
-		int ysh1 = 256 - ysh0 - kyarea;
-		assert(ysh0 >= 0);
-		assert(ysh1 >= 0);
-		assert(kyarea >= 0);
-		assert(ysh0 + kyarea + ysh1 == 256);
+	    version(verbose) auto tt0 = core.time.TickDuration.currSystemTick;
+	    ubyte[] data;
+	    data.length = w * h * 4;
+	    int[3][] row;
+	    row.length = w;
+	    real h0h = cast(real) h0 / h, w0w = cast(real) w0 / w, t0, t1;
+	    int[] sh0, sh1;
+	    int[] aisx0, aisx1;
+	    aisx0.length = w; aisx1.length = w; sh0.length = w; sh1.length = w;
+	    immutable eps = 1.0 / 256;
+	    immutable int kx = cast(int)(256 / w0w + 0.5), ky = cast(int) (256 / h0h + 0.5);
+	    foreach(x; 0..w) {
+		    real sx0 = x * w0w, sx1 = (x+1) * w0w;
+		    aisx0[x] = cast(int) sx0;
+		    aisx1[x] = cast(int) sx1;
+		    sh0[x] = cast(int) ((1.0 - modf(sx0, t0)) / w0w * 256 + 0.5);
+		    int kxarea = (aisx1[x] - aisx0[x] - 1)*kx;
+		    if ((sh0[x] + kxarea) > 256)
+			    sh0[x] = 256 - kxarea;
+		    sh1[x] = 256 - sh0[x] - kxarea;
+		    assert(sh0[x] >= 0);
+		    assert(kxarea >= 0);
+		    assert(sh1[x] >= 0);
+		    assert(sh0[x] + kxarea + sh1[x] == 256);
+	    }
+	    aisx1[$-1] = aisx0[$-1];
+	    foreach(y; 0..h) {		
+		    /*int sy = y * h0 / h;	//nearest neighbor
+		    foreach(x; 0..w) {
+			    int sx = x * w0 / w;
+			    int si = (sy * w0 + sx) * 4;
+			    data[di..di+3] = org[si..si+3];
+			    di += 4;
+		    }*/
+		    real sy0 = h0h * y, sy1 = h0h * (y+1);
+		    int isy0 = cast(int) sy0;
+		    int isy1 = cast(int) sy1;
+		    int ysh0 = cast(int) ((1.0 - std.math.modf(sy0, t0)) / h0h * 256 + 0.5);
+		    //int ysh1 = cast(int) (std.math.modf(sy1, t1) / h0h * 256);
+		    int kyarea = (isy1 - isy0 - 1) * ky;		
+		    if (ysh0 +  kyarea > 256)
+			    ysh0 = 256 - kyarea;
+		    int ysh1 = 256 - ysh0 - kyarea;
+		    assert(ysh0 >= 0);
+		    assert(ysh1 >= 0);
+		    assert(kyarea >= 0);
+		    assert(ysh0 + kyarea + ysh1 == 256);
 
-		if (y==h-1) isy1 = isy0;
+		    if (y==h-1) isy1 = isy0;
 
-		void addRow(int rsi, int rk) {
-			foreach(x; 0..w) {
-				int si = rsi + aisx0[x] * 4;
-				if (aisx1[x] > aisx0[x]) { // several pixels
-					int r = org[si] * sh0[x];
-					int g = org[si+1] * sh0[x];
-					int b = org[si+2] * sh0[x];
-					int sx = aisx0[x] + 1;
-					while(sx < aisx1[x]) {
-						si += 4;
-						r += org[si] * kx;
-						g += org[si+1] * kx;
-						b += org[si+2] * kx;
-						sx++;
-					}
-					si += 4;
-					r += org[si] * sh1[x];
-					g += org[si+1] * sh1[x];
-					b += org[si+2] * sh1[x];
-					row[x][0] += r * rk; row[x][1] += g * rk; row[x][2] += b * rk;
-				} else { // just one pixel					
-					row[x][0] += org[si] * rk * 256;
-					row[x][1] += org[si+1] * rk * 256;
-					row[x][2] += org[si+2] * rk * 256;
-				}
-			} //for x
-		} //addRow
+		    void addRow(int rsi, int rk) {
+			    foreach(x; 0..w) {
+				    int si = rsi + aisx0[x] * 4;
+				    if (aisx1[x] > aisx0[x]) { // several pixels
+					    int r = org[si] * sh0[x];
+					    int g = org[si+1] * sh0[x];
+					    int b = org[si+2] * sh0[x];
+					    int sx = aisx0[x] + 1;
+					    while(sx < aisx1[x]) {
+						    si += 4;
+						    r += org[si] * kx;
+						    g += org[si+1] * kx;
+						    b += org[si+2] * kx;
+						    sx++;
+					    }
+					    si += 4;
+					    r += org[si] * sh1[x];
+					    g += org[si+1] * sh1[x];
+					    b += org[si+2] * sh1[x];
+					    row[x][0] += r * rk; row[x][1] += g * rk; row[x][2] += b * rk;
+				    } else { // just one pixel					
+					    row[x][0] += org[si] * rk * 256;
+					    row[x][1] += org[si+1] * rk * 256;
+					    row[x][2] += org[si+2] * rk * 256;
+				    }
+			    } //for x
+		    } //addRow
 
-		foreach(ref px; row) px[0..3] = 0;
-		int rsi = isy0 * w0 * 4;
+		    foreach(ref px; row) px[0..3] = 0;
+		    int rsi = isy0 * w0 * 4;
 
-		if (isy1 > isy0) { // several rows
-			addRow(rsi, ysh0);
-			int sy = isy0 + 1;
-			while(sy < isy1) {
-				rsi += w0 * 4;
-				addRow(rsi, ky);
-				sy++;
-			}
-			rsi += w0 * 4;
-			addRow(rsi, ysh1);
-		} else { //one pixel row
-			addRow(rsi, 256);
-		}
-		int di = y * w * 4;
-		foreach(x; 0..w) {
-			data[di] = cast(ubyte) (row[x][0] >> 16);
-			data[di+1] = cast(ubyte) (row[x][1] >> 16);
-			data[di+2] = cast(ubyte) (row[x][2] >> 16);
-			di += 4;
-		}
-	}	
-	version(verbose) auto dt = core.time.TickDuration.currSystemTick - tt0;
-	version(verbose) writefln("resized in %s ms", dt.msecs);
-	HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
-	SetBitmapBits(hbm, data.length, data.ptr);
-	delete data;
-	delete orgbmp;
-	return cast(shared) new Bitmap(hbm, true);
+		    if (isy1 > isy0) { // several rows
+			    addRow(rsi, ysh0);
+			    int sy = isy0 + 1;
+			    while(sy < isy1) {
+				    rsi += w0 * 4;
+				    addRow(rsi, ky);
+				    sy++;
+			    }
+			    rsi += w0 * 4;
+			    addRow(rsi, ysh1);
+		    } else { //one pixel row
+			    addRow(rsi, 256);
+		    }
+		    int di = y * w * 4;
+		    foreach(x; 0..w) {
+			    data[di] = cast(ubyte) (row[x][0] >> 16);
+			    data[di+1] = cast(ubyte) (row[x][1] >> 16);
+			    data[di+2] = cast(ubyte) (row[x][2] >> 16);
+			    di += 4;
+		    }
+	    }	
+	    version(verbose) auto dt = core.time.TickDuration.currSystemTick - tt0;
+	    version(verbose) writefln("resized in %s ms", dt.msecs);
+	    HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
+	    SetBitmapBits(hbm, data.length, data.ptr);
+	    delete data;
+	    delete orgbmp;
+	    return cast(shared) new Bitmap(hbm, true);
+    } catch (Exception ex) {
+        version(verbose) writeln("exception in ResizeForBlog: ", ex);
+        return null;
+    }
 }
 
 bool ChangeLevels(Bitmap bmp, bool autoLevel, double gamma)
@@ -506,42 +535,55 @@ class Worker
 		iptid = improcTid;
 	}
 
-	void Run()
+	void Run() nothrow
 	{
 		bool done = false;
-		while(!done) 
-			receive(&Work, (Exit e) { done = true; }, (OwnerTerminated ot) { done = true;} );		
+		while(!done) {
+            try {
+			    receive(&Work, (Exit e) { done = true; }, (OwnerTerminated ot) { done = true;} );		
+            } catch(Exception ex) {
+                version(verbose) writeln("Worker got exception ", ex);
+            }
+        }
 	}
 
-	private void Work(HaveWork msg)
+	private void Work(HaveWork msg) nothrow
 	{
+        //try {
 		auto job = LabourDept.dept.GetJob();
 		if (job is null) return;
 		auto jgt = cast(JGetThumb) job;
 		if (jgt) { // GetThumb
 			auto pic = ReadPicture(jgt.fname);			
 			auto bmp = pic ? ResizeToThumb(pic) : cast(shared) RedPic();
-			if (bmp)
-				iptid.send(ThumbCreated(jgt.fname, bmp, jgt.req));			
+            try {
+			    if (bmp) iptid.send(ThumbCreated(jgt.fname, bmp, jgt.req));			
+            } catch (Exception ex) { version(verbose) writeln("exception in Work.send: ", ex); }
 			return;
 		}
 		auto jprep = cast(JPrepare) job;
 		if (jprep) { //prepare: read and resize to blog size
-			auto srcbmp = ReadBitmap(jprep.fname);
-			auto tf = jprep.tfs.cur;
-			auto turned = ImageProcessor.Rotate( srcbmp, tf.rotations90 );
-			if (abs(tf.fine_rotation) > 0.0001) 
-				turned = ImageProcessor.FineRotate(turned, tf.fine_rotation);			
-			if (tf.cropped.length > 0)
-				turned = CropBitmap(turned, tf.cropped);
-			auto bmp = ResizeForBlog(turned);
-			if (bmp) {
-				if (tf.levelsChanged)
-					ChangeLevels(cast(Bitmap)bmp, tf.autolevel, tf.gamma);
-				iptid.send(Prepared(jprep.fname, bmp));
-			}
+            try {
+			    auto srcbmp = ReadBitmap(jprep.fname);
+			    auto tf = jprep.tfs.cur;
+			    auto turned = ImageProcessor.Rotate( srcbmp, tf.rotations90 );
+			    if (abs(tf.fine_rotation) > 0.0001) 
+				    turned = ImageProcessor.FineRotate(turned, tf.fine_rotation);			
+			    if (tf.cropped.length > 0)
+				    turned = CropBitmap(turned, tf.cropped);
+			    auto bmp = ResizeForBlog(turned);
+			    if (bmp) {
+				    if (tf.levelsChanged)
+					    ChangeLevels(cast(Bitmap)bmp, tf.autolevel, tf.gamma);
+                    iptid.send(Prepared(jprep.fname, bmp)); 
+                
+			    }
+            } catch (Exception ex) {
+                version(verbose) writeln("Exception in Work: ", ex);
+            }
 			return;
 		}
+        //} catch (Exception ex) { version(verbose) writeln("Work exception ", ex); }
 	}
 
 private:
@@ -590,7 +632,7 @@ class State {
 		gamma = a.gamma;
 	}
 
-	@property bool levelsChanged() { return autolevel || abs(gamma - 1.0) > 0.001; }
+	@property bool levelsChanged() nothrow { return autolevel || abs(gamma - 1.0) > 0.001; }
 
 	bool prettySame(State a)
 	{
@@ -606,7 +648,7 @@ class Transformations
 	import std.container;
 	SList!State states;
 
-	@property State cur() { return states.front; }
+	@property State cur() nothrow { return states.front; }
 
 	this() 
 	{
