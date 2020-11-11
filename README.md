@@ -1,5 +1,7 @@
 ## BlogSort
 
+More details: http://www.infognition.com/blogsort/
+
 A simple Windows app for viewing photos and preparing them for a blog: rotate, crop, resize and save as jpeg. Reads and prepares pictures in background, so stepping to next or previous photo takes 0 seconds. Automatically selects output size for a picture, given max values. Automatically advances output file names, like cat01.jpg -> cat02.jpg -> cat03.jpg... 
 
 ![screenshot][1]
@@ -9,8 +11,8 @@ Use left mouse button to select area for cropping. Use right button to pick two 
 
 Keys:
 
-  - L - turn 90° left
-  - R - turn 90° right
+  - L - turn 90Â° left
+  - R - turn 90Â° right
   - H - fine rotate to make horizon marks lie on one horizontal line
   - C - crop to selected area
   - Esc - clear selection and horizon marks
