@@ -20,7 +20,7 @@ Keys:
   - G - save current picture
 
 ### Technical details
-Written in D language. Built using DMD 2.062. Uses DFL for GUI, take it from https://github.com/Rayerd/dfl (only needed for compiling, the binary blogsort.exe does not need any additional dlls). Uses libjpeg for writing.
+Written in D language. Uses DFL for GUI, take it from https://github.com/Rayerd/dfl (only needed for compiling, the binary blogsort.exe does not need any additional dlls). Uses libjpeg for writing.
 
 DFL (C) 2004-2010 Christopher E. Miller
 
@@ -46,4 +46,4 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-[1]: https://bitbucket.org/infognition/bsort/downloads/blogsort-screenshot600.jpg
+[1]: http://www.infognition.com/blogsort/blogsort500.jpg
